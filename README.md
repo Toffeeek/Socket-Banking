@@ -5,8 +5,8 @@ The project primarily consists of a client side and a server side c program. The
 
 There are two modes of access: Client Mode and Administrator Mode
 
-# Client Mode: 
+# Client Mode
 Clients are first required to create an account by setting up usernames, passwords, dates of birth and their favourite animals (used as security question in case they forget their passwords). The usernames and passwords are hashed via SHA256 BEFORE being sent to the server to increase client security. The server receives these credentials and stores them in a binary file as structures which acts as a client database.Then clients can use their credentials to login to their accounts, alternatively they can reset their passwords in case they forget it by entering their dates of birth and favourite animals. Once logged in, they can deposit, withdraw or transfer funds to other accounts. They will also be able to change any credential and view their balances.
 
-# Administrator Mode:
+# Administrator Mode
 Admins first need to set a username and password, upon which a request will be sent to the server. If the server approves of the request, an admin account will be created and admins can use their accounts to request access to client information and view activity through a logbook which records every client activity.
