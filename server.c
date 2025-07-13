@@ -22,7 +22,7 @@ argv[1] = port_number
 fork() desc
 creates a separate process (child process) - used for multi process programming
 required to handle multiple users at once
-the child process has an id of 0 which is returned by the fork() function
+the child processes has an id of 0 which is returned by the fork() function
 */
 
 /*
@@ -55,10 +55,10 @@ void generate_acc_no(char account_no[]);
 bool check_unique_account_no(char account_no[]);
 
 void user_signup(char command[]);
-void user_login(int sockfd);
+void user_login(int sockfd, char command[]);
 bool check_password(char username[], char password[]);
-void forgot_password(int sockfd, char username[]);
-void change_password(int sockfd, char username[]);
+bool forgot_password(char username[], char date_of_birth[], char favourite_animal[]);
+bool change_password(char username[], char new_password[]);
 
 
 
@@ -146,7 +146,15 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-
+/*
+command format
+[0]   - main command
+[20]  - username
+[85]  - password
+[150] - dateofbirth
+[161] - fav ani
+[182] - acc no
+*/
 
 void main_menu(int sockfd)
 {
@@ -156,7 +164,7 @@ void main_menu(int sockfd)
         char command[256] = {0};
         int n = read(sockfd, &command, 256);
         printf("%s\n", command);
-        printf("%s\n", &command[20]);
+
         if(n < 0)
             error("Error on reading.");
 
@@ -180,11 +188,48 @@ void main_menu(int sockfd)
             user_signup(command);
             bool response = true;  
             write(sockfd, &response, sizeof(response));
-            printf("Acc creation success.\n");
+        }
+        else if(strncmp(command, "PASS-CHECK", 10) == 0)
+        {
+            char username[65] = {0};
+            char password[65] = {0};
+            strcpy(username, &command[20]);
+            strcpy(password, &command[85]);
+            bool response = check_password(username, password); 
+            write(sockfd, &response, sizeof(bool));   
+            
+            if(response == true)
+            {
+                printf("Login success.\n");
+                char entry[255];
+                sprintf(entry, "LOGIN       | username: %s", username);
+                log_data(entry);
+            } 
+        }
+        else if(strncmp(command, "FORGOT-PASS", 11) == 0)
+        {
+            char username[65] = {0};
+            char date_of_birth[11];
+            char favourite_animal[21];
+
+            strcpy(username, &command[20]);
+            strcpy(date_of_birth, &command[85]);
+            strcpy(favourite_animal, &command[150]);
+
+            bool response = forgot_password(username, date_of_birth, favourite_animal);
+            write(sockfd, &response, sizeof(bool));
+
+        }
+        else if(strncmp(command, "CHANGE-PASS", 11) == 0)
+        {
+            char username[65];
+            char new_password[65];
+            strcpy(username, &command[20]);
+            strcpy(new_password, &command[85]);
+            bool response = change_password(username, new_password);
+            write(sockfd, &response, sizeof(bool));
         }
             
-        else if(strncmp(command, "LOGIN", 5) == 0)
-            user_login(sockfd);
                   
 
 
@@ -279,100 +324,6 @@ bool check_unique_account_no(char account_no[])
     }
     return true;
 }
-
-void user_login(int sockfd)
-{
-    printf("LOGIN.\n");    
-    bool response;
-
-
-    LABEL01:
-    char username[65] = {0}; 
-    while(1)
-    {        
-        printf("ACCEPTING USERNAME.\n");
-        bzero(username, 65);
-        int n = read(sockfd, username, sizeof(username));
-        if(n <= 0)
-            error("Reading failed.\n");
-
-        username[strcspn(username, "\n")] = '\0';
-
-        if(strcmp("0", username) == 0)
-            main_menu(sockfd);
-
-        
-        if(check_unique_username(username) == false)
-        {
-            response = true;
-            write(sockfd, &response, sizeof(response));
-            break;
-        }
-        else
-        {
-            response = false;
-            write(sockfd, &response, sizeof(response));
-        }
-    }
-
-    printf("USERNAME VALDATED.\n");
-
-    LABEL02:
-    printf("CHOICE (1-3).\n");
-    int choice;
-    read(sockfd, &choice, sizeof(choice));
-    printf("CHOICE : [%d].\n", choice);
-
-    switch (choice)
-    {
-        case 1:     break;
-        case 2:     forgot_password(sockfd, username);
-                    break;
-        case 0:     goto LABEL01;
-        default:    goto LABEL02;
-    }
-
-
-    while(1)
-    {
-        printf("RECEIVING PASSWORD.\n");
-        char password[65] = {0};
-        bool password_validated;
-        bzero(password, 65);
-        read(sockfd, password, sizeof(password));
-
-        printf("PASSWORD RECEIVED: [%s]\n", password);
-
-        if(strcmp(password, "0") == 0)
-            goto LABEL02;
-
-        password_validated = check_password(username, password);
-
-        
-
-        write(sockfd, &password_validated, sizeof(password_validated));
-
-
-        if(password_validated == true)
-        {
-            printf("PASSWORD VALIDATED.\n");
-            break;
-            
-        }
-        else
-        {
-            printf("PASSWORD INVALID.\n");
-        }
-    }
-
-    char entry[255];
-    sprintf(entry, "LOGIN       | username: %s", username);
-    log_data(entry);
-
-
-    
-
-}
 bool check_password(char username[], char password[])
 {
     FILE *f;
@@ -396,27 +347,9 @@ bool check_password(char username[], char password[])
     fclose(f);
     return false;
 }
-void forgot_password(int sockfd, char username[])
+bool forgot_password(char username[], char date_of_birth[], char favourite_animal[])
 {
-    LABEL01:
-    char date_of_birth[21] = {0}, favourite_animal[21] ={0};
-    bool response;
-    printf("DOB CHECK.\n");
-    read(sockfd, &response, sizeof(response));
-
-    if(response == false)
-        main_menu(sockfd);
-
-    printf("ANIMAL CHECK.\n");
-
-    read(sockfd, &response, sizeof(response));
-
-    if(response == false)
-        goto LABEL01;
-
-    read(sockfd, date_of_birth, sizeof(date_of_birth));
-    read(sockfd, favourite_animal, sizeof(favourite_animal));
-
+    bool response = false;
 
     FILE *f;
     f = fopen("user_database.bin", "rb");
@@ -429,31 +362,19 @@ void forgot_password(int sockfd, char username[])
     {
         if(strcmp(user.username, username) == 0 && strcmp(user.date_of_birth, date_of_birth) == 0 && strcmp(user.favourite_animal, favourite_animal) == 0)
         {
-            fclose(f);
             response = true;
-            write(sockfd, &response, sizeof(response));
             printf("MATCH FOUND.\n");
-            change_password(sockfd, username);
+            break;
         }
     }
 
     fclose(f);
-    response = false;
-    write(sockfd, &response, sizeof(response));
-    printf("MATCH NOT FOUND.\n");
-    main_menu(sockfd);
+
+    return response;
     
 }
-void change_password(int sockfd, char username[])
+bool change_password(char username[], char new_password[])
 {
-    bool response;
-    char new_password[65] = {0};
-    read(sockfd, &response, sizeof(response));
-
-    if(response == false)
-        user_login(sockfd);
-
-    read(sockfd, new_password, sizeof(new_password));
     
     FILE *f;
     f = fopen("user_database.bin", "r+b");
@@ -461,35 +382,28 @@ void change_password(int sockfd, char username[])
         error("File opening failed.\n");
 
     user_info user;
-    response = false;
+    bool response = false;
+
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0)
         {
+            response = true;
             strcpy(user.password, new_password);
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&user, sizeof(user_info), 1, f);
-    
-            response = true;
-            write(sockfd, &response, sizeof(response));
-            fclose(f);
 
             char entry[255];
             sprintf(entry, "PASSWORD-CH | username: %s", user.username);
             log_data(entry);
 
-            user_login(sockfd);
+            break;
         }
-    }
-
-    if(response == false)
-    {
-        write(sockfd, &response, sizeof(response));
     }
 
     fclose(f);
 
-
+    return response;
 }
 
 
