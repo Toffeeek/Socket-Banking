@@ -35,6 +35,7 @@ typedef struct
 {
     char username[65];
     char password[65];
+    char salt[17];
     char date_of_birth[11];
     char favourite_animal[21];
     char account_no[14];
@@ -56,9 +57,10 @@ bool check_unique_account_no(char account_no[]);
 
 void user_signup(char command[]);
 void user_login(int sockfd, char command[]);
+void send_salt(int sockfd, char username[]);
 bool check_password(char username[], char password[]);
 bool forgot_password(char username[], char date_of_birth[], char favourite_animal[]);
-bool change_password(char username[], char new_password[]);
+bool change_password(char username[], char new_password[], char salt[]);
 
 
 
@@ -154,6 +156,7 @@ command format
 [150] - dateofbirth
 [161] - fav ani
 [182] - acc no
+[196] - salt
 */
 
 void main_menu(int sockfd)
@@ -191,6 +194,7 @@ void main_menu(int sockfd)
         }
         else if(strncmp(command, "PASS-CHECK", 10) == 0)
         {
+            /*
             char username[65] = {0};
             char password[65] = {0};
             strcpy(username, &command[20]);
@@ -205,6 +209,24 @@ void main_menu(int sockfd)
                 sprintf(entry, "LOGIN       | username: %s", username);
                 log_data(entry);
             } 
+            */
+           char username[65] = {0};
+           strcpy(username, &command[20]);
+           send_salt(sockfd, username);
+           char password[65] = {0};
+           read(sockfd, &password, sizeof(password));
+
+           bool response = check_password(username, password); 
+           write(sockfd, &response, sizeof(bool));   
+            
+           if(response == true)
+           {
+                printf("Login success.\n");
+                char entry[255];
+                sprintf(entry, "LOGIN       | username: %s", username);
+                log_data(entry); 
+                
+           } 
         }
         else if(strncmp(command, "FORGOT-PASS", 11) == 0)
         {
@@ -224,9 +246,11 @@ void main_menu(int sockfd)
         {
             char username[65];
             char new_password[65];
+            char salt[17];
             strcpy(username, &command[20]);
             strcpy(new_password, &command[85]);
-            bool response = change_password(username, new_password);
+            strcpy(salt, &command[196]);
+            bool response = change_password(username, new_password, salt);
             write(sockfd, &response, sizeof(bool));
         }
             
@@ -248,6 +272,7 @@ void user_signup(char command[])
     strcpy(user.date_of_birth, &command[150]);
     strcpy(user.favourite_animal, &command[161]);
     strcpy(user.account_no, &command[182]);
+    strcpy(user.salt, &command[196]);
     user.balance = 0.0;
 
     FILE *f;
@@ -324,6 +349,36 @@ bool check_unique_account_no(char account_no[])
     }
     return true;
 }
+void send_salt(int sockfd, char username[])
+{
+    FILE *f;
+
+    f = fopen("user_database.bin", "rb");
+
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    user_info user;
+    char salt[17];
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, username) == 0)
+        {
+            strcpy(salt, user.salt);
+            break;
+        }       
+    }
+
+    fclose(f);
+
+    printf("Salt: %s\n", salt);
+
+    write(sockfd, &salt, sizeof(salt));
+
+
+
+}
 bool check_password(char username[], char password[])
 {
     FILE *f;
@@ -373,7 +428,7 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
     return response;
     
 }
-bool change_password(char username[], char new_password[])
+bool change_password(char username[], char new_password[], char salt[])
 {
     
     FILE *f;
@@ -390,6 +445,7 @@ bool change_password(char username[], char new_password[])
         {
             response = true;
             strcpy(user.password, new_password);
+            strcpy(user.salt, salt);
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&user, sizeof(user_info), 1, f);
 

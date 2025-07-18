@@ -5,16 +5,13 @@
 #include <ctype.h>
 #include <time.h>
 #include <openssl/sha.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
+
 
 typedef struct
 {
     char username[65];
     char password[65];
+    char salt[17];
     char date_of_birth[11];
     char favourite_animal[21];
     char account_no[14];
@@ -53,6 +50,7 @@ int main()
             {
                 printf("Username: %s\n", user.username);
                 printf("Password: %s\n", user.password);
+                printf("Salt: %s\n", user.salt);
                 printf("DOB: %s\n", user.date_of_birth);
                 printf("Fav Animal: %s\n", user.favourite_animal);
                 printf("Balance: %06.2f\n", user.balance);

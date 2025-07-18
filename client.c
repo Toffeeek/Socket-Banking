@@ -43,12 +43,13 @@ void get_password(char password[], const char prompt[]);
 void get_date_of_birth(char date_of_birth[], const char prompt[]);
 bool check_valid_date(int birth_date, int birth_month, int birth_year);
 void get_favourite_animal(char favourite_animal[], const char prompt[]);
-void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[]); 
-void sha256(char input[]);
+void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[], const char seg7[]); 
+void sha256(char input[], int mode, char salt[]);
+void salter(char input[], char salt[]);
 
 void main_menu(int sockfd);
 void user_signup(int sockfd);
-void user_input_signup(int sockfd, char username[], char password[], char date_of_birth[], char favourite_animal[]);
+void user_input_signup(int sockfd, char username[], char password[], char salt[], char date_of_birth[], char favourite_animal[]);
 
 user_info packet_userinfo_signup(char username[], char password[], char date_of_birth[], char favourite_animal[], char account_no[]);
 void user_login(int sockfd);
@@ -472,7 +473,7 @@ void get_favourite_animal(char favourite_animal[], const char prompt[])
         }    
     }
 }
-void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[])
+void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[], const char seg7[])
 {
     bzero(command, 256);
     strcpy(&command[0], seg1);         //max 18 - main cmd
@@ -480,27 +481,49 @@ void package_command(char command[], const char seg1[], const char seg2[], const
     strcpy(&command[85], seg3);        //max 64 - pass
     strcpy(&command[150], seg4);       //max 10 - dob
     strcpy(&command[161], seg5);       //max 20 - fav ani
-    strcpy(&command[182], seg6);
+    strcpy(&command[182], seg6);       //max 13 - acc no
+    strcpy(&command[196], seg7);       //       - salt
 }
 
-void sha256(char input[]) 
+void sha256(char input[], int mode, char salt[]) 
 {
+    // mode 0 for usernames and 1 for passwords
+
     unsigned char hash[SHA256_DIGEST_LENGTH];
     
     // ensures that all the bytes after the 20th byte are nulls
     bzero(input + 21, 44);
 
+    if(mode == 1)
+        salter(input, salt);
+    else if(mode == 2)
+        strcat(input, salt);
+
     // hashes the entire 65-byte buffer 
     SHA256((unsigned char *)input, 65, hash);
 
     // overwrites input with the hex string representation 
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) 
+    {
         sprintf(&input[i * 2], "%02x", hash[i]);
     }
 
     input[64] = '\0'; 
 }
+void salter(char input[], char salt[])
+{
+    char salt_letters[] = "QWERTYUIOPASDFGHJKLZXCVBNMqwertyuiopasdfghjklzxcvbnm";
+    int size = strlen(salt_letters);
+    srand(time(NULL));
 
+    for(int i = 0; i < 16; i++)
+    {
+        int letter_index = rand() % size;
+        salt[i] = salt_letters[letter_index];
+    }
+
+    strcat(input, salt);
+}
 void main_menu(int sockfd)
 {
     printf("Welcome to Jashim Bank.\n");
@@ -545,16 +568,16 @@ void main_menu(int sockfd)
 void user_signup(int sockfd)
 {
     char command[256];
-    char username[65] = {0}, password[65] = {0}, date_of_birth[11], favourite_animal[21], account_no[14];
+    char username[65] = {0}, password[65] = {0}, salt[17] = {0}, date_of_birth[11], favourite_animal[21], account_no[14];
     bool response;
 
 
-    user_input_signup(sockfd, username, password, date_of_birth, favourite_animal);
+    user_input_signup(sockfd, username, password, salt, date_of_birth, favourite_animal);
 
     if(strcmp(username, "0") == 0)
         return;
 
-    package_command(command, "REQ-ACC-NO", "", "", "", "", "");
+    package_command(command, "REQ-ACC-NO", "", "", "", "", "", "");
 
     int n = write(sockfd, command, sizeof(command));
     if(n < 0)
@@ -568,7 +591,7 @@ void user_signup(int sockfd)
 
     //clear_screen();
 
-    package_command(command, "SIGNUP", username, password, date_of_birth, favourite_animal, account_no);
+    package_command(command, "SIGNUP", username, password, date_of_birth, favourite_animal, account_no, salt);
 
     write(sockfd, command, sizeof(command));
 
@@ -582,9 +605,18 @@ void user_signup(int sockfd)
         printf("Account creation failed.\n");
     }
 }
-void user_input_signup(int sockfd, char username[], char password[], char date_of_birth[], char favourite_animal[])
+void user_input_signup(int sockfd, char username[], char password[], char salt[], char date_of_birth[], char favourite_animal[])
 {
+
     LABEL01:
+    get_date_of_birth(date_of_birth, "Enter your date of birth [DD-MM-YYYY] (0 to go back): ");
+    if(strcmp(date_of_birth, "0") == 0)
+    {
+        clear_screen();
+        return;
+    }
+
+    LABEL02:
     bzero(username, 65);
     char command[256] = {0};
     bool response = false;
@@ -594,11 +626,10 @@ void user_input_signup(int sockfd, char username[], char password[], char date_o
         get_username(username, "Set username (0 to go back): ");
         if(strcmp(username, "0") == 0)
         {
-            clear_screen();
-            return;
+            goto LABEL01;
         }
-        sha256(username);
-        package_command(command, "USERNAME-CHECK", username, "", "", "", "");
+        sha256(username, 0, username);
+        package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
         printf("%s\n", command);
         printf("%s\n", &command[20]);
         write(sockfd, &command, sizeof(command));
@@ -611,29 +642,27 @@ void user_input_signup(int sockfd, char username[], char password[], char date_o
 
     printf("Username validated.\n");
 
-    LABEL02:
+    
+
+    LABEL03:
     get_password(password, "Set password (0 to go back): ");
     if(strcmp(password, "0") == 0)
     {
         clear_screen();
-        goto LABEL01;
-    }
-    sha256(password);
-
-    LABEL03:
-    get_date_of_birth(date_of_birth, "Set date of birth [DD-MM-YYYY] (0 to go back): ");
-    if(strcmp(date_of_birth, "0") == 0)
-    {
-        clear_screen();
         goto LABEL02;
     }
+    sha256(password, 1, salt);
 
-    get_favourite_animal(favourite_animal, "Set favourite animal (0 to go back): ");
+    
+
+    get_favourite_animal(favourite_animal, "What is your favourite animal? (0 to go back): ");
     if(strcmp(favourite_animal, "0") == 0)
     {
         clear_screen();
         goto LABEL03;
     }
+
+    printf("Salt: %s\n", salt);
 }
 
 
@@ -665,9 +694,9 @@ void user_input_login(int sockfd, char unhashed_username[21], char unhashed_pass
         return;
     }
     strcpy(unhashed_username, username);
-    sha256(username);
+    sha256(username, 0, username);
 
-    package_command(command, "USERNAME-CHECK", username, "", "", "", "");
+    package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
     printf("%s\n", command);
     printf("%s\n", &command[20]);
     write(sockfd, &command, sizeof(command));
@@ -695,26 +724,30 @@ void user_input_login(int sockfd, char unhashed_username[21], char unhashed_pass
     char password[65] = {0};
     switch (choice)
     {
-        case 1: 
-                get_password(password, "Enter password (0 to go back): ");
-                if(strcmp(password, "0") == 0)
-                {
-                    clear_screen();
-                    goto LABEL02;
+        case 1: {
+                    get_password(password, "Enter password (0 to go back): ");
+                    if(strcmp(password, "0") == 0)
+                    {
+                        clear_screen();
+                        goto LABEL02;
+                    }
+                    strcpy(unhashed_password, password);
+                    package_command(command, "PASS-CHECK", username, "", "", "", "", "");
+                    write(sockfd, &command, sizeof(command));
+                    char salt[17];
+                    read(sockfd, &salt, sizeof(salt));
+                    sha256(password, 2, salt);
+                    write(sockfd, &password, sizeof(password));
+                    read(sockfd, &response, sizeof(bool));
+                    if(response == false)
+                    {
+                        clear_screen();
+                        printf("Password incorrect. Try again\n");
+                        goto LABEL03;
+                    }
+                    else
+                        break;
                 }
-                strcpy(unhashed_password, password);
-                sha256(password);
-                package_command(command, "PASS-CHECK", username, password, "", "", "");
-                write(sockfd, &command, sizeof(command));
-                read(sockfd, &response, sizeof(bool));
-                if(response == false)
-                {
-                    clear_screen();
-                    printf("Password incorrect. Try again\n");
-                    goto LABEL03;
-                }
-                else
-                    break;
 
         case 2: forgot_password(sockfd, username);
                 goto LABEL02;
@@ -748,7 +781,7 @@ void forgot_password(int sockfd, char username[])
         goto LABEL01;
     }
     
-    package_command(command, "FORGOT-PASS", username, date_of_birth, favourite_animal, "", "");
+    package_command(command, "FORGOT-PASS", username, date_of_birth, favourite_animal, "", "", "");
 
     write(sockfd, &command, sizeof(command));
     read(sockfd, &response, sizeof(bool));
@@ -768,15 +801,16 @@ void change_password(int sockfd, char username[])
     bool response;
     char command[256];
     char new_password[65] = {0};
+    char salt[17] = {0};
     get_password(new_password, "Enter new password (0 to go back): ");
     if(strcmp(new_password, "0") == 0)
     {
         return;
     }
 
-    sha256(new_password);
+    sha256(new_password, 1, salt);
 
-    package_command(command, "CHANGE-PASS", username, new_password, "", "", "");
+    package_command(command, "CHANGE-PASS", username, new_password, "", "", "", salt);
     write(sockfd, &command, sizeof(command));
 
     read(sockfd, &response, sizeof(response));
@@ -788,7 +822,7 @@ void change_password(int sockfd, char username[])
     }
     else
     {   
-        printf("Password not update failed. Client not found. Returning to login screen.\n\n");
+        printf("Password update failed. Client not found. Returning to login screen.\n\n");
     }
 }
 
