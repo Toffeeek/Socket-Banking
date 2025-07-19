@@ -64,13 +64,8 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
 bool change_password(char username[], char new_password[], char salt[]);
 
 
-
-
-
-
 void log_data(char entry[]);
-
-void error(const char *message);
+void error(const char message[]);
 
 
 int main(int argc, char *argv[])
@@ -177,7 +172,9 @@ void main_menu(int sockfd)
         if(strncmp(command, "USERNAME-CHECK", 14) == 0)
         {
             printf("checking username\n");
-            bool isUnique = check_unique_username(&command[20]);
+            char username[65];
+            strcpy(username, &command[20]);
+            bool isUnique = check_unique_username(username);
             write(sockfd, &isUnique, sizeof(bool));
         }
         else if(strncmp(command, "REQ-ACC-NO", 10) == 0)
@@ -301,18 +298,14 @@ bool check_unique_username(char username[])
         error("flock() failed.\n");
     }
 
-    
-
-    
-
     user_info user;
-    bool response = false;
+    bool response = true;
 
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0)
         {
-            response = true;
+            response = false;
         }
             
     }
