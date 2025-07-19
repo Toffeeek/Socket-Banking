@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <openssl/sha.h>
+#include <sys/file.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -194,22 +195,6 @@ void main_menu(int sockfd)
         }
         else if(strncmp(command, "PASS-CHECK", 10) == 0)
         {
-            /*
-            char username[65] = {0};
-            char password[65] = {0};
-            strcpy(username, &command[20]);
-            strcpy(password, &command[85]);
-            bool response = check_password(username, password); 
-            write(sockfd, &response, sizeof(bool));   
-            
-            if(response == true)
-            {
-                printf("Login success.\n");
-                char entry[255];
-                sprintf(entry, "LOGIN       | username: %s", username);
-                log_data(entry);
-            } 
-            */
            char username[65] = {0};
            strcpy(username, &command[20]);
            send_salt(sockfd, username);
@@ -283,7 +268,17 @@ void user_signup(char command[])
         error("File opening failed.\n");
     }
 
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
     fwrite(&user, 1, sizeof(user_info), f);
+
+    flock(fd, LOCK_UN);
     fclose(f);
 
     char entry[255];
@@ -295,24 +290,36 @@ bool check_unique_username(char username[])
     FILE *f;
 
     f = fopen("user_database.bin", "rb");
-
     if(f == NULL)
         error("File opening failed.\n");
 
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    
+
     user_info user;
+    bool response = false;
 
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0)
         {
-            fclose(f);
-            return false;
+            response = true;
         }
             
     }
 
     fclose(f);
-    return true;
+    flock(fd, LOCK_UN);
+    return response;
 }
 void generate_acc_no(char account_no[])
 {
@@ -340,14 +347,31 @@ bool check_unique_account_no(char account_no[])
     if(f == NULL)
         error("File opening failed.\n");
 
-    user_info user;
+    int fd = fileno(f);
 
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    user_info user;
+    bool response = true;
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.account_no, account_no) == 0)
-            return false;
+        {
+            response = false;
+            break;
+        }
+            
     }
-    return true;
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+    return response;
 }
 void send_salt(int sockfd, char username[])
 {
@@ -357,6 +381,16 @@ void send_salt(int sockfd, char username[])
 
     if(f == NULL)
         error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if(flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
 
     user_info user;
     char salt[17];
@@ -370,6 +404,7 @@ void send_salt(int sockfd, char username[])
         }       
     }
 
+    flock(fd, LOCK_UN);
     fclose(f);
 
     printf("Salt: %s\n", salt);
@@ -388,19 +423,30 @@ bool check_password(char username[], char password[])
     if(f == NULL)
         error("File opening failed.\n");
 
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
     user_info user;
+    bool response = false;
 
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0 && strcmp(user.password, password) == 0)
         {
-            fclose(f);
-            return true;
+            response = true;
         }       
     }
 
     fclose(f);
-    return false;
+    flock(fd, LOCK_UN);
+    return response;
 }
 bool forgot_password(char username[], char date_of_birth[], char favourite_animal[])
 {
@@ -410,6 +456,16 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
     f = fopen("user_database.bin", "rb");
     if(f == NULL)
         error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
 
     user_info user;
 
@@ -423,6 +479,7 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
         }
     }
 
+    flock(fd, LOCK_UN);
     fclose(f);
 
     return response;
@@ -435,6 +492,16 @@ bool change_password(char username[], char new_password[], char salt[])
     f = fopen("user_database.bin", "r+b");
     if(f == NULL)
         error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
 
     user_info user;
     bool response = false;
@@ -449,15 +516,19 @@ bool change_password(char username[], char new_password[], char salt[])
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&user, sizeof(user_info), 1, f);
 
-            char entry[255];
-            sprintf(entry, "PASSWORD-CH | username: %s", user.username);
-            log_data(entry);
+            
 
             break;
         }
     }
 
+
+    flock(fd, LOCK_UN);
     fclose(f);
+
+    char entry[255];
+    sprintf(entry, "PASSWORD-CH | username: %s", user.username);
+    log_data(entry);
 
     return response;
 }
@@ -485,8 +556,19 @@ void log_data(char entry[])
     if(f == NULL)
         error("Logbook opening failed");
 
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
     fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d] %s\n", day, month, year, hour, minute, second, entry);
 
+    flock(fd, LOCK_UN);
     fclose(f);
 }
 

@@ -53,14 +53,21 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
 
 user_info packet_userinfo_signup(char username[], char password[], char date_of_birth[], char favourite_animal[], char account_no[]);
 void user_login(int sockfd);
-void user_input_login(int sockfd, char unhashed_username[21], char unhashed_password[21]);
+void user_input_login(int sockfd, char username[]);
 void forgot_password(int sockfd, char username[]);
 void change_password(int sockfd, char username[]);
 
 
 
-void homepage(int sockfd, char unhashed_username[21], char unhashed_password[21]);
-
+void homepage(int sockfd, char username[]);
+user_info get_user_info(char username[]);
+user_info withdraw(user_info user);
+user_info deposit(user_info user);
+user_info transfer(user_info user);
+user_info withdraw(user_info user);
+user_info check_balance(user_info user);
+user_info change_account_details(user_info user);
+void request_statement(user_info user);
 
 
 
@@ -669,22 +676,22 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
 
 void user_login(int sockfd)
 {
-    char unhashed_username[21] = {0}, unhashed_password[21] = {0};
+    char username[65] = {0};
     
-    user_input_login(sockfd, unhashed_username, unhashed_password);
+    user_input_login(sockfd, username);
 
-    if(strcmp(unhashed_username, "\0") == 0)
+    if(strcmp(username, "0") == 0)
         return;
 
     printf("Login initiated.\n");
 
-    homepage(sockfd, unhashed_username, unhashed_password);
+    homepage(sockfd, username);
 
 }
-void user_input_login(int sockfd, char unhashed_username[21], char unhashed_password[21])
+void user_input_login(int sockfd, char username[])
 {
     LABEL01:
-    char username[65] = {0};
+    
     char command[256];
     bool response;
     get_username(username, "Enter username (0 to go back): ");
@@ -693,7 +700,7 @@ void user_input_login(int sockfd, char unhashed_username[21], char unhashed_pass
         clear_screen();
         return;
     }
-    strcpy(unhashed_username, username);
+    
     sha256(username, 0, username);
 
     package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
@@ -731,7 +738,7 @@ void user_input_login(int sockfd, char unhashed_username[21], char unhashed_pass
                         clear_screen();
                         goto LABEL02;
                     }
-                    strcpy(unhashed_password, password);
+                
                     package_command(command, "PASS-CHECK", username, "", "", "", "", "");
                     write(sockfd, &command, sizeof(command));
                     char salt[17];
@@ -828,7 +835,77 @@ void change_password(int sockfd, char username[])
 
 
 
-void homepage(int sockfd, char unhashed_username[21], char unhashed_password[21])
+void homepage(int sockfd, char username[])
+{
+    user_info user = get_user_info(username);
+    printf("Welcome user\n\n");
+    int choice;
+
+    while(1)
+    {
+        printf("1. Withdraw money\n"
+               "2. Deposit money\n"
+               "3. Transfer to another account\n"
+               "4. Check Balance\n"
+               "5. Change Account Details\n"
+               "6. Request Bank Statement\n"
+               "7. Logout\n"
+               "Please select an operation (1-7): ");
+        scanf("%d", &choice);
+        getchar();
+
+        switch (choice)
+        {
+            case  1:    user = withdraw(user);
+                        break;
+            case  2:    user = deposit(user);
+                        break;
+
+            case  3:    user = transfer(user);
+                        break;
+
+            case  4:    clear_screen();
+                        check_balance(user);
+                        break;
+
+            case  5:    clear_screen();
+                        user = change_account_details(user);
+                        break;
+
+            case  6:    request_statement(user);
+
+            case  7:    clear_screen();
+                        break;
+
+            default:    printf("Invalid choice.\n");
+        }
+    }
+}
+user_info get_user_info(char useraname[])
+{
+
+}
+user_info withdraw(user_info user)
+{
+
+}
+user_info deposit(user_info user)
+{
+
+}
+user_info transfer(user_info user)
+{
+
+}
+user_info check_balance(user_info user)
+{
+
+}
+user_info change_account_details(user_info user)
+{
+
+}
+void request_statement(user_info user)
 {
 
 }
