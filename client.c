@@ -15,7 +15,7 @@
 command line arguments:
 file_name, server_ipaddress, port_number
 
-argv[0] = file_name
+argv[0] = file_path
 argv[1] = server_ipaddress
 argv[2] = port_number
 */
@@ -60,15 +60,13 @@ void change_password(int sockfd, char username[]);
 
 
 void homepage(int sockfd, char username[]);
-user_info get_user_info(char username[]);
-user_info withdraw(user_info user);
-user_info deposit(user_info user);
-user_info transfer(user_info user);
-user_info withdraw(user_info user);
-user_info check_balance(user_info user);
-user_info change_account_details(user_info user);
-void request_statement(user_info user);
-
+user_info get_user_info(int sockfd, char username[]);
+void withdraw(int sockfd, user_info user);
+void deposit(int sockfd, user_info user);
+void transfer(int sockfd, user_info user);
+void check_balance(int sockfd, user_info user);
+void change_account_details(int sockfd,user_info user);
+void request_statement(int sockfd, user_info user);
 
 
 
@@ -684,7 +682,7 @@ void user_login(int sockfd)
         return;
 
     printf("Login initiated.\n");
-
+    clear_screen();
     homepage(sockfd, username);
 
 }
@@ -837,12 +835,14 @@ void change_password(int sockfd, char username[])
 
 void homepage(int sockfd, char username[])
 {
-    user_info user = get_user_info(username);
+    
+    
     printf("Welcome user\n\n");
     int choice;
 
     while(1)
     {
+        user_info user = get_user_info(sockfd, username);
         printf("1. Withdraw money\n"
                "2. Deposit money\n"
                "3. Transfer to another account\n"
@@ -856,56 +856,156 @@ void homepage(int sockfd, char username[])
 
         switch (choice)
         {
-            case  1:    user = withdraw(user);
+            case  1:    withdraw(sockfd, user);
                         break;
-            case  2:    user = deposit(user);
+            case  2:    deposit(sockfd, user);
                         break;
 
-            case  3:    user = transfer(user);
+            case  3:    transfer(sockfd, user);
                         break;
 
             case  4:    clear_screen();
-                        check_balance(user);
+                        check_balance(sockfd, user);
                         break;
 
             case  5:    clear_screen();
-                        user = change_account_details(user);
+                        change_account_details(sockfd, user);
                         break;
 
-            case  6:    request_statement(user);
+            case  6:    request_statement(sockfd, user);
 
             case  7:    clear_screen();
                         break;
 
             default:    printf("Invalid choice.\n");
         }
+
+        if(choice == 7)
+        {
+            printf("Thank you for banking this us!\n");
+            char command[256];
+            package_command(command, "LOGOUT", username, "", "", "", "", "");
+            write(sockfd, &command, sizeof(command));
+            
+            break;
+        }
+            
     }
 }
-user_info get_user_info(char useraname[])
+user_info get_user_info(int sockfd, char username[])
+{
+    char command[256];
+    package_command(command, "GET-USER-INFO", username, "", "", "", "", "");
+    write(sockfd, &command, sizeof(command));
+    user_info user;
+    read(sockfd, &user, sizeof(user));
+    return user;
+}
+void withdraw(int sockfd, user_info user)
+{
+    clear_screen(); 
+    char command[256];
+
+    float withdraw_amount;
+    while(1)
+    {
+        user = get_user_info(sockfd, user.username);
+        printf("Current balance: Tk%06.2f\n", user.balance);
+        printf("Enter amount to withdraw (0 to go back): ");
+        scanf("%f", &withdraw_amount);
+        getchar();
+        user = get_user_info(sockfd, user.username);
+
+        if(withdraw_amount == 0)
+        {
+            clear_screen();
+            return;
+        }
+        if(user.balance >= withdraw_amount)
+        {
+            
+            package_command(command, "WITHDRAW", user.username, "", "", "", "", "");
+            write(sockfd, &command, sizeof(command));
+            write(sockfd, &withdraw_amount, sizeof(float));
+            bool response;
+            read(sockfd, &response, sizeof(response));
+
+            if(response == true)
+            {
+                clear_screen();
+                printf("Withdrawal successful, returning to homepage\n\n");
+                return;
+            }
+            else
+            {
+                clear_screen();
+                printf("Invalid amount. Try again.\n");
+            }
+            
+        }
+        else
+        {
+            clear_screen();
+            printf("Invalid amount. Try again.\n");
+        }         
+    }
+}
+void deposit(int sockfd, user_info user)
+{
+    clear_screen(); 
+    char command[256];
+
+    float deposit_amount;
+    while(1)
+    {
+        user = get_user_info(sockfd, user.username);
+        printf("Current balance: Tk%06.2f\n", user.balance);
+        printf("Enter amount to withdraw (0 to go back): ");
+        scanf("%f", &deposit_amount);
+        getchar();
+
+        if(deposit_amount == 0)
+        {
+            clear_screen();
+            return;
+        }
+        else
+        {
+            
+            package_command(command, "DEPOSIT", user.username, "", "", "", "", "");
+            write(sockfd, &command, sizeof(command));
+            write(sockfd, &deposit_amount, sizeof(float));
+            bool response;
+            read(sockfd, &response, sizeof(response));
+
+            if(response == true)
+            {
+                clear_screen();
+                printf("Deposition successful, returning to homepage\n\n");
+                return;
+            }
+            else
+            {
+                clear_screen();
+                printf("Invalid amount. Try again.\n");
+            }
+            
+        }       
+    }
+}
+void transfer(int sockfd, user_info user)
 {
 
 }
-user_info withdraw(user_info user)
+void check_balance(int sockfd, user_info user)
 {
 
 }
-user_info deposit(user_info user)
+void change_account_details(int sockfd, user_info user)
 {
 
 }
-user_info transfer(user_info user)
-{
-
-}
-user_info check_balance(user_info user)
-{
-
-}
-user_info change_account_details(user_info user)
-{
-
-}
-void request_statement(user_info user)
+void request_statement(int sockfd, user_info user)
 {
 
 }

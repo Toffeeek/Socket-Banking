@@ -63,6 +63,9 @@ bool check_password(char username[], char password[]);
 bool forgot_password(char username[], char date_of_birth[], char favourite_animal[]);
 bool change_password(char username[], char new_password[], char salt[]);
 
+user_info get_user_info(char username[]);
+bool withdraw(int sockfd, char username[], float withdraw_amount);
+bool deposit(int sockfd, char username[], float deposit_amount);
 
 void log_data(char entry[]);
 void error(const char message[]);
@@ -223,6 +226,8 @@ void main_menu(int sockfd)
             bool response = forgot_password(username, date_of_birth, favourite_animal);
             write(sockfd, &response, sizeof(bool));
 
+            
+
         }
         else if(strncmp(command, "CHANGE-PASS", 11) == 0)
         {
@@ -234,11 +239,78 @@ void main_menu(int sockfd)
             strcpy(salt, &command[196]);
             bool response = change_password(username, new_password, salt);
             write(sockfd, &response, sizeof(bool));
+
+            if(response == true)
+            {
+                    printf("Pass change success.\n");
+                    char entry[255];
+                    sprintf(entry, "PASS-CH     | username: %s", username);
+                    log_data(entry); 
+                    
+            } 
+
         }
+        else if(strncmp(command, "GET-USER-INFO", 13) == 0)
+        {
+            char username[65];
             
-                  
+            strcpy(username, &command[20]);
+            user_info user = get_user_info(username);
+            write(sockfd, &user, sizeof(user));
+        }
+        else if(strncmp(command, "WITHDRAW", 8) == 0)
+        {
+            char username[65];
+            float withdraw_amount = 0;
+            strcpy(username, &command[20]);
+            bool response = withdraw(sockfd, username, withdraw_amount);
+            write(sockfd, &response, sizeof(bool));
+
+            if(response == true)
+            {
+                    char entry[255];
+                    sprintf(entry, "WITHDRAWAL  | username: %s | amount: %.2f", username, withdraw_amount);
+                    log_data(entry); 
+                    
+            }
+        }  
+        else if(strncmp(command, "DEPOSIT", 8) == 0)
+        {
+            char username[65];
+            float deposit_amount = 0;
+            
+            strcpy(username, &command[20]);
+            bool response = deposit(sockfd, username, deposit_amount);
+            write(sockfd, &response, sizeof(bool));
+
+            if(response == true)
+            {
+                char entry[255];
+                sprintf(entry, "DEPOSITION  | username: %s | amount: %.2f", username, deposit_amount);
+                log_data(entry); 
+                    
+            }
+        } 
+        else if(strncmp(command, "LOGOUT", 6) == 0)
+        {
+            char username[65];
+            
+            strcpy(username, &command[20]);
+            
+            char entry[255];
+            sprintf(entry, "LOGOUT      | username: %s", username);
+            log_data(entry);         
+        } 
 
 
+        
+            
+    
+        
+       
+        else
+            printf("Invalid command.\n");    
+    
     }
 }
 
@@ -509,8 +581,6 @@ bool change_password(char username[], char new_password[], char salt[])
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&user, sizeof(user_info), 1, f);
 
-            
-
             break;
         }
     }
@@ -519,15 +589,138 @@ bool change_password(char username[], char new_password[], char salt[])
     flock(fd, LOCK_UN);
     fclose(f);
 
-    char entry[255];
-    sprintf(entry, "PASSWORD-CH | username: %s", user.username);
-    log_data(entry);
-
     return response;
 }
 
+user_info get_user_info(char username[])
+{
+    FILE *f;
+
+    f = fopen("user_database.bin", "rb");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info user, target;
+    
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, username) == 0)
+        {
+            target = user;
+            bzero(target.salt, 17);
+            break;
+        }
+            
+    }
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+    return target;
+}
+bool withdraw(int sockfd, char username[], float withdraw_amount)
+{
+    
+    read(sockfd, &withdraw_amount, sizeof(float));
 
 
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info users;
+    bool response = false;
+
+    while(fread(&users, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(users.username, username) == 0)
+        {
+            user_info user = users;
+            
+            if(user.balance >= withdraw_amount)
+            {
+                user.balance -= withdraw_amount;
+
+                fseek(f, -sizeof(user_info), SEEK_CUR);  
+                fwrite(&user, sizeof(user_info), 1, f);       
+                response = true;    
+                
+                char entry[255];
+                sprintf(entry, "WITHDRAWAL  | username: %s | amount: tk%06.2f", user.username, withdraw_amount);
+                log_data(entry);
+                
+                break;
+            }
+            else
+                break;
+            
+        }
+    }
+
+    fclose(f); 
+    flock(fd, LOCK_UN);
+    
+
+    return response;
+}
+bool deposit(int sockfd, char username[], float deposit_amount)
+{
+    
+    read(sockfd, &deposit_amount, sizeof(float));
+
+
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info users;
+    bool response = false;
+
+    while(fread(&users, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(users.username, username) == 0)
+        {        
+            user_info user; 
+            user.balance += deposit_amount;
+            fseek(f, -sizeof(user_info), SEEK_CUR);  
+            fwrite(&user, sizeof(user_info), 1, f);       
+            response = true;    
+
+            break;
+        }
+    }
+
+    fclose(f); 
+    flock(fd, LOCK_UN);
+
+    return response;
+}
 
 
 void log_data(char entry[])
