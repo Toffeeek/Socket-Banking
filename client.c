@@ -73,7 +73,7 @@ void request_statement(int sockfd, user_info user);
 void admin_registration(int sockfd);
 void admin_login(int sockfd);
 
-
+void flush_socket(int sockfd);
 void error(const char *message);
 void clear_screen(); 
 
@@ -594,7 +594,6 @@ void user_signup(int sockfd)
 
     printf("Generated acc no\n");
 
-    //clear_screen();
 
     package_command(command, "SIGNUP", username, password, date_of_birth, favourite_animal, account_no, salt);
 
@@ -671,7 +670,6 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
 }
 
 
-
 void user_login(int sockfd)
 {
     char username[65] = {0};
@@ -704,8 +702,17 @@ void user_input_login(int sockfd, char username[])
     package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
     printf("%s\n", command);
     printf("%s\n", &command[20]);
-    write(sockfd, &command, sizeof(command));
+    write(sockfd, &command, 256);
     read(sockfd, &response, sizeof(bool));
+    if(response == true)
+    {
+        printf("response = true\n");
+    }
+    if(response == false)
+    {
+        printf("response = false\n");
+    }
+    
     if(response == true)
     {
         printf("Username does not exist.\n");
@@ -736,7 +743,7 @@ void user_input_login(int sockfd, char username[])
                         clear_screen();
                         goto LABEL02;
                     }
-                
+                    bool response;
                     package_command(command, "PASS-CHECK", username, "", "", "", "", "");
                     write(sockfd, &command, sizeof(command));
                     char salt[17];
@@ -875,20 +882,17 @@ void homepage(int sockfd, char username[])
             case  6:    request_statement(sockfd, user);
 
             case  7:    clear_screen();
-                        break;
-
+                        printf("Thank you for banking this us!\n");
+                        char command[256];
+                        package_command(command, "LOGOUT", username, "", "", "", "", "");
+                        write(sockfd, command, 256);
+                        flush_socket(sockfd);
+                        return;
+        
             default:    printf("Invalid choice.\n");
         }
 
-        if(choice == 7)
-        {
-            printf("Thank you for banking this us!\n");
-            char command[256];
-            package_command(command, "LOGOUT", username, "", "", "", "", "");
-            write(sockfd, &command, sizeof(command));
-            
-            break;
-        }
+        
             
     }
 }
@@ -1024,6 +1028,12 @@ void admin_login(int sockfd)
 
 
 
+void flush_socket(int sockfd) 
+{
+    char buf[512];
+    while (recv(sockfd, buf, sizeof(buf), MSG_DONTWAIT) > 0) 
+    {}
+}
 
 void error(const char *message)
 {

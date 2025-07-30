@@ -52,7 +52,7 @@ typedef struct
 } admin_info;
 
 void main_menu(int newsockfd);
-bool check_unique_username(char username[]);
+int check_unique_username(char username[]);
 void generate_acc_no(char account_no[]);
 bool check_unique_account_no(char account_no[]);
 
@@ -164,7 +164,7 @@ void main_menu(int sockfd)
     while(1)
     {
         char command[256] = {0};
-        int n = read(sockfd, &command, 256);
+        int n = read(sockfd, command, 256);
         printf("%s\n", command);
 
         if(n < 0)
@@ -177,8 +177,10 @@ void main_menu(int sockfd)
             printf("checking username\n");
             char username[65];
             strcpy(username, &command[20]);
-            bool isUnique = check_unique_username(username);
-            write(sockfd, &isUnique, sizeof(bool));
+            printf("Username: %s\n", username);
+            bool response = check_unique_username(username);
+            
+            write(sockfd, &response, sizeof(bool));     
         }
         else if(strncmp(command, "REQ-ACC-NO", 10) == 0)
         {
@@ -354,7 +356,7 @@ void user_signup(char command[])
     sprintf(entry, "SIGNUP      | username: %s ", user.username);
     log_data(entry);
 }
-bool check_unique_username(char username[])
+int check_unique_username(char username[])
 {
     FILE *f;
 
@@ -371,13 +373,13 @@ bool check_unique_username(char username[])
     }
 
     user_info user;
-    bool response = true;
+    int response = 1;
 
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0)
         {
-            response = false;
+            response = 0;
         }
             
     }
