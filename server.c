@@ -79,6 +79,8 @@ user_info_package get_user_info(char username[]);
 bool withdraw(int sockfd, char username[], float withdraw_amount);
 bool deposit(int sockfd, char username[], float deposit_amount);
 bool change_username(char old_username[], char new_username[]);
+bool change_date_of_birth(char username[], char new_date_of_birth[]);
+bool change_favourite_animal(char username[], char new_favourite_animal[]);
 
 void log_data(char entry[]);
 void error(const char message[]);
@@ -335,6 +337,52 @@ void main_menu(int sockfd)
                 printf("username changed successfully\n");
                 char entry[255];
                 sprintf(entry, "USERNAME-CH | old username: %s | new username: %s", old_username, new_username);
+                log_data(entry); 
+                    
+            }
+            if(response == false)
+            {
+                printf("failed to write data\n");
+            }
+        } 
+        else if(strncmp(command, "CHANGE-DOB", 10) == 0)
+        {
+            char username[65];
+            char new_date_of_birth[65];
+            strcpy(username, &command[20]);
+            strcpy(new_date_of_birth, &command[85]);
+
+            bool response = change_date_of_birth(username, new_date_of_birth);
+            write(sockfd, &response, sizeof(bool));  
+
+            if(response == true)
+            {
+                printf("dob changed successfully\n");
+                char entry[255];
+                sprintf(entry, "DOB-CH      | username: %s | new date of birth: %s", username, new_date_of_birth);
+                log_data(entry); 
+                    
+            }
+            if(response == false)
+            {
+                printf("failed to write data\n");
+            }
+        }
+        else if(strncmp(command, "CHANGE-FAVANI", 13) == 0)
+        {
+            char username[65];
+            char new_favourite_animal[65];
+            strcpy(username, &command[20]);
+            strcpy(new_favourite_animal, &command[85]);
+
+            bool response = change_favourite_animal(username, new_favourite_animal);
+            write(sockfd, &response, sizeof(bool));  
+
+            if(response == true)
+            {
+                printf("username changed successfully\n");
+                char entry[255];
+                sprintf(entry, "FAVANI-CH   | username: %s | new favourite animal: %s", username, new_favourite_animal);
                 log_data(entry); 
                     
             }
@@ -790,6 +838,82 @@ bool change_username(char old_username[], char new_username[])
         if(strcmp(user.username, old_username) == 0)
         {
             strcpy(user.username, new_username);
+            fseek(f, -sizeof(user_info), SEEK_CUR);  
+            fwrite(&user, sizeof(user_info), 1, f);
+            response = true;
+
+            break;
+        }
+    }
+
+
+    flock(fd, LOCK_UN);
+    fclose(f);
+    return response;
+}
+bool change_date_of_birth(char username[], char new_date_of_birth[])
+{
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    user_info user;
+    bool response = false;
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, username) == 0)
+        {
+            strcpy(user.date_of_birth, new_date_of_birth);
+            fseek(f, -sizeof(user_info), SEEK_CUR);  
+            fwrite(&user, sizeof(user_info), 1, f);
+            response = true;
+
+            break;
+        }
+    }
+
+
+    flock(fd, LOCK_UN);
+    fclose(f);
+    return response;
+}
+bool change_favourite_animal(char username[], char new_favourite_animal[])
+{
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    user_info user;
+    bool response = false;
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, username) == 0)
+        {
+            strcpy(user.favourite_animal, new_favourite_animal);
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&user, sizeof(user_info), 1, f);
             response = true;

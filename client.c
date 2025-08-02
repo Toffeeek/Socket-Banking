@@ -836,11 +836,11 @@ void change_password(int sockfd, char username[])
 
     if(response == true)
     {
-        printf("Password updated. Returning to login screen.\n\n");
+        printf("Password updated.\n\n");
     }
     else
     {   
-        printf("Password update failed. Client not found. Returning to login screen.\n\n");
+        printf("Password update failed. Client not found.\n\n");
     }
 }
 
@@ -1038,7 +1038,6 @@ void change_account_details(int sockfd, user_info user)
 
     while(1)
     {
-        printf("Change \n");
         printf("1. Change Username\n"
                "2. Change Password\n"
                "3. Change Date of Birth\n"
@@ -1109,7 +1108,7 @@ void change_username(int sockfd, char username[])
     if(response == true)
         printf("Username validated.\n\n");
     else
-        printf("Failed to update username.\n");
+        printf("Failed to update username.\n\n");
     
 
 
@@ -1124,11 +1123,59 @@ void change_password_homepage(int sockfd, char username[])
 }
 void change_date_of_birth(int sockfd, char username[])
 {
+    bool response = check_password(sockfd, username);
+    if(response == false)
+        return;
+    
+    char command[256];
+    char new_date_of_birth[11];
+    response = false;
+    
+    
+    get_date_of_birth(new_date_of_birth, "Enter new date of birth [DD-MM-YYYY] (0 to go back): ");
+    if(strcmp(new_date_of_birth, "0") == 0)
+    {
+        clear_screen();
+        return;
+    }
+        
+    
 
+    package_command(command, "CHANGE-DOB", username, new_date_of_birth, "", "", "", "");
+    write(sockfd, command, 256);
+    read(sockfd, &response, sizeof(bool));
+    if(response == true)
+        printf("Date of birth successfully updated.\n\n");
+    else
+        printf("Failed to update date of birth.\n\n");
 }
 void change_favourite_animal(int sockfd, char username[])
 {
+    bool response = check_password(sockfd, username);
+    if(response == false)
+        return;
+    
+    char command[256];
+    char new_favourite_animal[21];
+    response = false;
+    
+    
+    get_favourite_animal(new_favourite_animal, "Enter new favourite animal (0 to go back): ");
+    if(strcmp(new_favourite_animal, "0") == 0)
+    {
+        clear_screen();
+        return;
+    }
+        
+    
 
+    package_command(command, "CHANGE-FAVANI", username, new_favourite_animal, "", "", "", "");
+    write(sockfd, command, 256);
+    read(sockfd, &response, sizeof(bool));
+    if(response == true)
+        printf("Favourite animal successfully updated.\n\n");
+    else
+        printf("Failed to update favourite animal.\n\n");
 }
 bool check_password(int sockfd, char username[])
 {   
