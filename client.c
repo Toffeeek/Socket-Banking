@@ -73,7 +73,7 @@ void request_statement(int sockfd, user_info user);
 void admin_registration(int sockfd);
 void admin_login(int sockfd);
 
-void flush_socket(int sockfd);
+//void flush_socket(int sockfd);
 void error(const char *message);
 void clear_screen(); 
 
@@ -531,6 +531,7 @@ void salter(char input[], char salt[])
 }
 void main_menu(int sockfd)
 {
+    clear_screen();
     printf("Welcome to Jashim Bank.\n");
 
     while(1)
@@ -743,7 +744,7 @@ void user_input_login(int sockfd, char username[])
                         clear_screen();
                         goto LABEL02;
                     }
-                    bool response;
+
                     package_command(command, "PASS-CHECK", username, "", "", "", "", "");
                     write(sockfd, &command, sizeof(command));
                     char salt[17];
@@ -842,13 +843,12 @@ void change_password(int sockfd, char username[])
 
 void homepage(int sockfd, char username[])
 {
-    
-    
     printf("Welcome user\n\n");
     int choice;
 
     while(1)
     {
+        //flush_socket(sockfd);
         user_info user = get_user_info(sockfd, username);
         printf("1. Withdraw money\n"
                "2. Deposit money\n"
@@ -865,6 +865,7 @@ void homepage(int sockfd, char username[])
         {
             case  1:    withdraw(sockfd, user);
                         break;
+
             case  2:    deposit(sockfd, user);
                         break;
 
@@ -886,10 +887,12 @@ void homepage(int sockfd, char username[])
                         char command[256];
                         package_command(command, "LOGOUT", username, "", "", "", "", "");
                         write(sockfd, command, 256);
-                        flush_socket(sockfd);
+                        //flush_socket(sockfd);
                         return;
         
-            default:    printf("Invalid choice.\n");
+            default:    clear_screen();
+                        printf("Invalid choice.\n\n");
+                        
         }
 
         
@@ -898,33 +901,40 @@ void homepage(int sockfd, char username[])
 }
 user_info get_user_info(int sockfd, char username[])
 {
+    //flush_socket(sockfd);
     char command[256];
     package_command(command, "GET-USER-INFO", username, "", "", "", "", "");
-    write(sockfd, &command, sizeof(command));
+    write(sockfd, command, 256);
     user_info user;
-    read(sockfd, &user, sizeof(user));
+    read(sockfd, &user, sizeof(user_info));
     return user;
 }
 void withdraw(int sockfd, user_info user)
 {
+    //flush_socket(sockfd);
     clear_screen(); 
     char command[256];
-
     float withdraw_amount;
     while(1)
     {
         user = get_user_info(sockfd, user.username);
         printf("Current balance: Tk%06.2f\n", user.balance);
         printf("Enter amount to withdraw (0 to go back): ");
-        scanf("%f", &withdraw_amount);
+        if(scanf("%f", &withdraw_amount) == 0)
+        {
+            getchar();
+            printf("Invalid amount. Try again.\n");
+            continue;
+        }
         getchar();
-        user = get_user_info(sockfd, user.username);
-
         if(withdraw_amount == 0)
         {
             clear_screen();
             return;
         }
+
+        user = get_user_info(sockfd, user.username);
+
         if(user.balance >= withdraw_amount)
         {
             
@@ -950,12 +960,13 @@ void withdraw(int sockfd, user_info user)
         else
         {
             clear_screen();
-            printf("Invalid amount. Try again.\n");
+            printf("Inufficient balance.\n");
         }         
     }
 }
 void deposit(int sockfd, user_info user)
 {
+    //flush_socket(sockfd);
     clear_screen(); 
     char command[256];
 
@@ -964,8 +975,15 @@ void deposit(int sockfd, user_info user)
     {
         user = get_user_info(sockfd, user.username);
         printf("Current balance: Tk%06.2f\n", user.balance);
-        printf("Enter amount to withdraw (0 to go back): ");
-        scanf("%f", &deposit_amount);
+        printf("Enter amount to deposit (0 to go back): ");
+
+        if(scanf("%f", &deposit_amount) == 0)
+        {
+            getchar();
+            printf("Invalid amount. Try again.\n");
+            continue;
+        }
+        
         getchar();
 
         if(deposit_amount == 0)
@@ -977,7 +995,7 @@ void deposit(int sockfd, user_info user)
         {
             
             package_command(command, "DEPOSIT", user.username, "", "", "", "", "");
-            write(sockfd, &command, sizeof(command));
+            write(sockfd, command, 256);
             write(sockfd, &deposit_amount, sizeof(float));
             bool response;
             read(sockfd, &response, sizeof(response));
@@ -991,7 +1009,8 @@ void deposit(int sockfd, user_info user)
             else
             {
                 clear_screen();
-                printf("Invalid amount. Try again.\n");
+                printf("Deposition failed. Returning to homepage.\n\n");
+                return;
             }
             
         }       
@@ -1003,7 +1022,10 @@ void transfer(int sockfd, user_info user)
 }
 void check_balance(int sockfd, user_info user)
 {
-
+    //flush_socket(sockfd);
+    user = get_user_info(sockfd, user.username);
+    clear_screen();
+    printf("Balance: Tk%06.2f\n\n", user.balance);
 }
 void change_account_details(int sockfd, user_info user)
 {
@@ -1028,13 +1050,12 @@ void admin_login(int sockfd)
 
 
 
-void flush_socket(int sockfd) 
+/*void flush_socket(int sockfd) 
 {
     char buf[512];
     while (recv(sockfd, buf, sizeof(buf), MSG_DONTWAIT) > 0) 
     {}
-}
-
+}*/
 void error(const char *message)
 {
     perror(message);

@@ -48,6 +48,18 @@ typedef struct
 {
     char username[65];
     char password[65];
+    char date_of_birth[11];
+    char favourite_animal[21];
+    char account_no[14];
+    float balance;
+
+} user_info_package;
+
+
+typedef struct
+{
+    char username[65];
+    char password[65];
 
 } admin_info;
 
@@ -63,7 +75,7 @@ bool check_password(char username[], char password[]);
 bool forgot_password(char username[], char date_of_birth[], char favourite_animal[]);
 bool change_password(char username[], char new_password[], char salt[]);
 
-user_info get_user_info(char username[]);
+user_info_package get_user_info(char username[]);
 bool withdraw(int sockfd, char username[], float withdraw_amount);
 bool deposit(int sockfd, char username[], float deposit_amount);
 
@@ -255,10 +267,9 @@ void main_menu(int sockfd)
         else if(strncmp(command, "GET-USER-INFO", 13) == 0)
         {
             char username[65];
-            
             strcpy(username, &command[20]);
-            user_info user = get_user_info(username);
-            write(sockfd, &user, sizeof(user));
+            user_info_package user = get_user_info(username);
+            write(sockfd, &user, sizeof(user_info_package));
         }
         else if(strncmp(command, "WITHDRAW", 8) == 0)
         {
@@ -270,27 +281,32 @@ void main_menu(int sockfd)
 
             if(response == true)
             {
-                    char entry[255];
-                    sprintf(entry, "WITHDRAWAL  | username: %s | amount: %.2f", username, withdraw_amount);
-                    log_data(entry); 
+                char entry[255];
+                sprintf(entry, "WITHDRAWAL  | username: %s | amount: %.2f", username, withdraw_amount);
+                log_data(entry); 
                     
             }
         }  
         else if(strncmp(command, "DEPOSIT", 8) == 0)
         {
             char username[65];
-            float deposit_amount = 0;
-            
+            float deposit_amount;
             strcpy(username, &command[20]);
+            read(sockfd, &deposit_amount, sizeof(float));
             bool response = deposit(sockfd, username, deposit_amount);
             write(sockfd, &response, sizeof(bool));
 
             if(response == true)
             {
+                printf("data written successfully\n");
                 char entry[255];
                 sprintf(entry, "DEPOSITION  | username: %s | amount: %.2f", username, deposit_amount);
                 log_data(entry); 
                     
+            }
+            if(response == false)
+            {
+                printf("failed to write data\n");
             }
         } 
         else if(strncmp(command, "LOGOUT", 6) == 0)
@@ -594,8 +610,9 @@ bool change_password(char username[], char new_password[], char salt[])
     return response;
 }
 
-user_info get_user_info(char username[])
+user_info_package get_user_info(char username[])
 {
+    printf("username: %s\n", username);
     FILE *f;
 
     f = fopen("user_database.bin", "rb");
@@ -610,22 +627,29 @@ user_info get_user_info(char username[])
         error("flock() failed.\n");
     }
 
-    user_info user, target;
+    user_info user;
+    user_info_package target;
     
 
     while(fread(&user, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(user.username, username) == 0)
         {
-            target = user;
-            bzero(target.salt, 17);
+            strcpy(target.username, user.username);
+            strcpy(target.password, user.username);
+            strcpy(target.date_of_birth, user.date_of_birth);
+            strcpy(target.favourite_animal, user.favourite_animal);
+            strcpy(target.account_no, user.account_no);
+            target.balance = user.balance;
+            
             break;
         }
             
     }
 
-    fclose(f);
     flock(fd, LOCK_UN);
+    fclose(f);
+    
     return target;
 }
 bool withdraw(int sockfd, char username[], float withdraw_amount)
@@ -653,21 +677,14 @@ bool withdraw(int sockfd, char username[], float withdraw_amount)
     while(fread(&users, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(users.username, username) == 0)
-        {
-            user_info user = users;
-            
-            if(user.balance >= withdraw_amount)
+        {    
+            if(users.balance >= withdraw_amount)
             {
-                user.balance -= withdraw_amount;
+                users.balance -= withdraw_amount;
 
                 fseek(f, -sizeof(user_info), SEEK_CUR);  
-                fwrite(&user, sizeof(user_info), 1, f);       
-                response = true;    
-                
-                char entry[255];
-                sprintf(entry, "WITHDRAWAL  | username: %s | amount: tk%06.2f", user.username, withdraw_amount);
-                log_data(entry);
-                
+                fwrite(&users, sizeof(user_info), 1, f);       
+                response = true;   
                 break;
             }
             else
@@ -676,16 +693,14 @@ bool withdraw(int sockfd, char username[], float withdraw_amount)
         }
     }
 
-    fclose(f); 
     flock(fd, LOCK_UN);
-    
-
+    fclose(f); 
     return response;
 }
 bool deposit(int sockfd, char username[], float deposit_amount)
 {
-    
-    read(sockfd, &deposit_amount, sizeof(float));
+    printf("username: %s\n", username);
+    printf("deposit amount: %f\n", deposit_amount);
 
 
     FILE *f;
@@ -707,19 +722,19 @@ bool deposit(int sockfd, char username[], float deposit_amount)
     while(fread(&users, sizeof(user_info), 1, f) == 1)
     {
         if(strcmp(users.username, username) == 0)
-        {        
-            user_info user; 
-            user.balance += deposit_amount;
-            fseek(f, -sizeof(user_info), SEEK_CUR);  
-            fwrite(&user, sizeof(user_info), 1, f);       
-            response = true;    
-
+        {
+            response = true;
+            users.balance += deposit_amount;
+            fseek(f, -sizeof(user_info), SEEK_CUR);
+            fwrite(&users, sizeof(user_info), 1, f);
+            
             break;
         }
     }
 
-    fclose(f); 
     flock(fd, LOCK_UN);
+    fclose(f); 
+    
 
     return response;
 }
