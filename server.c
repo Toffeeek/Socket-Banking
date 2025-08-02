@@ -78,6 +78,7 @@ bool change_password(char username[], char new_password[], char salt[]);
 user_info_package get_user_info(char username[]);
 bool withdraw(int sockfd, char username[], float withdraw_amount);
 bool deposit(int sockfd, char username[], float deposit_amount);
+bool change_username(char old_username[], char new_username[]);
 
 void log_data(char entry[]);
 void error(const char message[]);
@@ -319,6 +320,29 @@ void main_menu(int sockfd)
             sprintf(entry, "LOGOUT      | username: %s", username);
             log_data(entry);         
         } 
+        else if(strncmp(command, "CHANGE-USERNAME", 15) == 0)
+        {
+            char old_username[65];
+            char new_username[65];
+            strcpy(old_username, &command[20]);
+            strcpy(new_username, &command[85]);
+
+            bool response = change_username(old_username, new_username);
+            write(sockfd, &response, sizeof(bool));  
+
+            if(response == true)
+            {
+                printf("username changed successfully\n");
+                char entry[255];
+                sprintf(entry, "USERNAME-CH | old username: %s | new username: %s", old_username, new_username);
+                log_data(entry); 
+                    
+            }
+            if(response == false)
+            {
+                printf("failed to write data\n");
+            }
+        } 
 
 
         
@@ -513,6 +537,9 @@ bool check_password(char username[], char password[])
         fclose(f);
         error("flock() failed.\n");
     }
+
+    printf("username: %s\n"
+            "password: %s\n", username, password);
 
     
 
@@ -736,6 +763,44 @@ bool deposit(int sockfd, char username[], float deposit_amount)
     fclose(f); 
     
 
+    return response;
+}
+bool change_username(char old_username[], char new_username[])
+{
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    user_info user;
+    bool response = false;
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, old_username) == 0)
+        {
+            strcpy(user.username, new_username);
+            fseek(f, -sizeof(user_info), SEEK_CUR);  
+            fwrite(&user, sizeof(user_info), 1, f);
+            response = true;
+
+            break;
+        }
+    }
+
+
+    flock(fd, LOCK_UN);
+    fclose(f);
     return response;
 }
 

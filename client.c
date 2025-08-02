@@ -66,6 +66,11 @@ void deposit(int sockfd, user_info user);
 void transfer(int sockfd, user_info user);
 void check_balance(int sockfd, user_info user);
 void change_account_details(int sockfd,user_info user);
+void change_username(int sockfd, char username[]);
+void change_password_homepage(int sockfd, char username[]);
+void change_date_of_birth(int sockfd, char username[]);
+void change_favourite_animal(int sockfd, char username[]);
+bool check_password(int sockfd, char username[]);
 void request_statement(int sockfd, user_info user);
 
 
@@ -855,7 +860,7 @@ void homepage(int sockfd, char username[])
                "3. Transfer to another account\n"
                "4. Check Balance\n"
                "5. Change Account Details\n"
-               "6. Request Bank Statement\n"
+               "6. View Account Activity\n"
                "7. Logout\n"
                "Please select an operation (1-7): ");
         scanf("%d", &choice);
@@ -872,12 +877,10 @@ void homepage(int sockfd, char username[])
             case  3:    transfer(sockfd, user);
                         break;
 
-            case  4:    clear_screen();
-                        check_balance(sockfd, user);
+            case  4:    check_balance(sockfd, user);
                         break;
 
-            case  5:    clear_screen();
-                        change_account_details(sockfd, user);
+            case  5:    change_account_details(sockfd, user);
                         break;
 
             case  6:    request_statement(sockfd, user);
@@ -1029,6 +1032,132 @@ void check_balance(int sockfd, user_info user)
 }
 void change_account_details(int sockfd, user_info user)
 {
+    clear_screen();
+    
+    int choice;
+
+    while(1)
+    {
+        printf("Change \n");
+        printf("1. Change Username\n"
+               "2. Change Password\n"
+               "3. Change Date of Birth\n"
+               "4. Change Favourite Animal\n"
+               "0. Go Back\n"
+               "Please select an operation (0-4): ");
+        scanf("%d", &choice);
+        getchar();
+
+        switch (choice)
+        {
+            case  0:    clear_screen();
+                        return;
+
+            case  1:    change_username(sockfd, user.username);
+                        break;
+
+            case  2:    change_password_homepage(sockfd, user.username);
+                        break;
+
+            case  3:    change_date_of_birth(sockfd, user.username);
+                        break;
+
+            case  4:    change_favourite_animal(sockfd, user.username);
+                        break;
+
+        
+            default:    clear_screen();
+                        printf("Invalid choice.\n\n");
+                        
+        }
+
+        
+            
+    }
+
+}
+void change_username(int sockfd, char username[])
+{
+    bool response = check_password(sockfd, username);
+    if(response == false)
+        return;
+    
+    char command[256];
+    char new_username[65];
+    response = false;
+    while(response == false)
+    {
+        get_username(new_username, "Enter new username (0 to go back): ");
+        if(strcmp(new_username, "0") == 0)
+        {
+            clear_screen();
+            return;
+        }
+        sha256(new_username, 0, new_username);
+        package_command(command, "USERNAME-CHECK", new_username, "", "", "", "", "");
+        write(sockfd, command, 256);
+        read(sockfd, &response, sizeof(bool));
+        if(response == false)
+        {
+            printf("Username taken already, try a different username.\n");
+        }
+    }
+
+    package_command(command, "CHANGE-USERNAME", username, new_username, "", "", "", "");
+    write(sockfd, command, 256);
+    read(sockfd, &response, sizeof(bool));
+    if(response == true)
+        printf("Username validated.\n\n");
+    else
+        printf("Failed to update username.\n");
+    
+
+
+}
+void change_password_homepage(int sockfd, char username[])
+{
+    bool response = check_password(sockfd, username);
+    if(response == false)
+        return;
+    
+    change_password(sockfd, username);
+}
+void change_date_of_birth(int sockfd, char username[])
+{
+
+}
+void change_favourite_animal(int sockfd, char username[])
+{
+
+}
+bool check_password(int sockfd, char username[])
+{   
+    LABEL01:
+    char command[256];
+    char password[65];
+    bool response = false;
+    get_password(password, "Enter your password (0 to go back): ");
+    if(strcmp(password, "0") == 0)
+    {
+        clear_screen();
+        return response;
+    }
+    package_command(command, "PASS-CHECK", username, "", "", "", "", "");
+    write(sockfd, &command, sizeof(command));
+    char salt[17];
+    read(sockfd, &salt, sizeof(salt));
+    sha256(password, 2, salt);
+    write(sockfd, &password, sizeof(password));
+    read(sockfd, &response, sizeof(bool));
+    if(response == false)
+    {
+        clear_screen();
+        printf("Password incorrect. Try again\n");
+        goto LABEL01;
+    }
+    else
+        return response;
+        
 
 }
 void request_statement(int sockfd, user_info user)
