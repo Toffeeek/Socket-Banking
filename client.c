@@ -43,6 +43,7 @@ void get_password(char password[], const char prompt[]);
 void get_date_of_birth(char date_of_birth[], const char prompt[]);
 bool check_valid_date(int birth_date, int birth_month, int birth_year);
 void get_favourite_animal(char favourite_animal[], const char prompt[]);
+void get_account_no(char account_no[], const char prompt[]);
 void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[], const char seg7[]); 
 void sha256(char input[], int mode, char salt[]);
 void salter(char input[], char salt[]);
@@ -483,6 +484,60 @@ void get_favourite_animal(char favourite_animal[], const char prompt[])
         }    
     }
 }
+void get_account_no(char account_no[], const char prompt[])
+{
+    bool valid_account_no = false;
+
+    while(valid_account_no == false)
+    {
+        char test_account_no[20];
+        printf("%s", prompt);
+        bzero(test_account_no, 20);
+        fgets(test_account_no, 20, stdin);
+        if (test_account_no[strlen(test_account_no) - 1] != '\n') 
+        {
+            int ch;
+            while ((ch = getchar()) != '\n' && ch != EOF);
+        }
+        test_account_no[strcspn(test_account_no, "\n")] = '\0';
+        
+        if(strcmp(test_account_no, "0") == 0)
+        {
+            strcpy(account_no, test_account_no);
+            return;
+        }
+
+        int size = strlen(test_account_no);
+
+        
+        if(size =! 13)
+        {
+            clear_screen(); 
+            printf("Account number must be 13 characters long.\n");
+            continue;
+        }
+        
+        bool fault_found = false;
+        for(int i = 0; i < size; i++)
+        {
+            if(!isdigit(test_account_no[i]))
+            {
+                clear_screen(); 
+                fault_found = true;
+                printf("Account number must contain digits only.\n");
+                break;
+            } 
+        }
+
+        if(fault_found == true)
+            continue;
+        else
+        {
+            strcpy(account_no, test_account_no);
+            valid_account_no = true;
+        }      
+    }
+}
 void package_command(char command[], const char seg1[], const char seg2[], const char seg3[], const char seg4[], const char seg5[], const char seg6[], const char seg7[])
 {
     bzero(command, 256);
@@ -921,7 +976,7 @@ void withdraw(int sockfd, user_info user)
     while(1)
     {
         user = get_user_info(sockfd, user.username);
-        printf("Current balance: Tk%06.2f\n", user.balance);
+        printf("Current balance: Tk%.2f\n", user.balance);
         printf("Enter amount to withdraw (0 to go back): ");
         if(scanf("%f", &withdraw_amount) == 0)
         {
@@ -977,7 +1032,7 @@ void deposit(int sockfd, user_info user)
     while(1)
     {
         user = get_user_info(sockfd, user.username);
-        printf("Current balance: Tk%06.2f\n", user.balance);
+        printf("Current balance: Tk%.2f\n", user.balance);
         printf("Enter amount to deposit (0 to go back): ");
 
         if(scanf("%f", &deposit_amount) == 0)
@@ -1021,14 +1076,96 @@ void deposit(int sockfd, user_info user)
 }
 void transfer(int sockfd, user_info user)
 {
+    char account_number[14];
+    char command[256];
+    float transfer_amount;
 
+    LABEL01:
+    while(1)
+    {   
+        
+        bool response = false;
+        while(response = false)
+        {
+            clear_screen();
+            get_account_no(account_number, "Please enter the account number of the transferee (0 to go back): ");
+            if(strcmp(account_number, "0") == 0)
+            {
+                return;
+            }
+
+            package_command(command, "ACC-NO-CHECK", account_number, "", "", "", "", "");
+            write(sockfd, command, 256);
+            read(sockfd, &response, sizeof(bool));
+
+            if(response == false)
+            {
+                printf("Account number not found.\n");
+            }
+        }
+    }
+        
+    while(1)
+    {
+        clear_screen();
+        user = get_user_info(sockfd, user.username);
+        printf("Current balance: Tk%.2f\n", user.balance);
+        printf("Enter the amount to transfer (0 to go back): ");
+        if(scanf("%f", &transfer_amount) == 0)
+        {
+            getchar();
+            printf("Invalid amount. Try again.\n");
+            goto LABEL01;
+        }
+        getchar();
+        if(transfer_amount == 0)
+        {
+            clear_screen();
+            return;
+        }
+
+        user = get_user_info(sockfd, user.username);
+
+        if(user.balance >= transfer_amount)
+        {
+            
+            package_command(command, "TRANSFER", user.username, account_number, "", "", "", "");
+            write(sockfd, &command, sizeof(command));
+            write(sockfd, &transfer_amount, sizeof(float));
+            bool response;
+            read(sockfd, &response, sizeof(response));
+
+            if(response == true)
+            {
+                clear_screen();
+                printf("Withdrawal successful, returning to homepage\n\n");
+                return;
+            }
+            else
+            {
+                clear_screen();
+                printf("Invalid amount. Try again.\n");
+            }
+            
+        }
+        else
+        {
+            clear_screen();
+            printf("Inufficient balance.\n");
+        }         
+    }
+
+            
+        
+    
+    
 }
 void check_balance(int sockfd, user_info user)
 {
     //flush_socket(sockfd);
     user = get_user_info(sockfd, user.username);
     clear_screen();
-    printf("Balance: Tk%06.2f\n\n", user.balance);
+    printf("Balance: Tk%.2f\n\n", user.balance);
 }
 void change_account_details(int sockfd, user_info user)
 {

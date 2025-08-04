@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <sys/time.h>
 #include <time.h>
 #include <openssl/sha.h>
 #include <sys/file.h>
@@ -76,13 +77,17 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
 bool change_password(char username[], char new_password[], char salt[]);
 
 user_info_package get_user_info(char username[]);
-bool withdraw(int sockfd, char username[], float withdraw_amount);
-bool deposit(int sockfd, char username[], float deposit_amount);
+bool withdraw(char username[], float withdraw_amount);
+bool deposit(char username[], float deposit_amount);
+void generate_trxid(char trxid[], char username[], const char type);
 bool change_username(char old_username[], char new_username[]);
 bool change_date_of_birth(char username[], char new_date_of_birth[]);
 bool change_favourite_animal(char username[], char new_favourite_animal[]);
 
-void log_data(char entry[]);
+void long_to_base62(long input, char output[]);
+void generate_time(int *day, int *month, int *year, int *hour, int *minute, int *second, int *millisecond);
+void log_transaction(char trxid[], char sender[], const char receiver[], float amount, int status);
+void log_activity(char entry[]);
 void error(const char message[]);
 
 
@@ -226,7 +231,7 @@ void main_menu(int sockfd)
                 printf("Login success.\n");
                 char entry[255];
                 sprintf(entry, "LOGIN       | username: %s", username);
-                log_data(entry); 
+                log_activity(entry); 
                 
            } 
         }
@@ -262,7 +267,7 @@ void main_menu(int sockfd)
                     printf("Pass change success.\n");
                     char entry[255];
                     sprintf(entry, "PASS-CH     | username: %s", username);
-                    log_data(entry); 
+                    log_activity(entry); 
                     
             } 
 
@@ -277,17 +282,17 @@ void main_menu(int sockfd)
         else if(strncmp(command, "WITHDRAW", 8) == 0)
         {
             char username[65];
-            float withdraw_amount = 0;
+            float withdraw_amount;
             strcpy(username, &command[20]);
-            bool response = withdraw(sockfd, username, withdraw_amount);
+            read(sockfd, &withdraw_amount, sizeof(float));
+            bool response = withdraw(username, withdraw_amount);
             write(sockfd, &response, sizeof(bool));
 
             if(response == true)
             {
-                char entry[255];
-                sprintf(entry, "WITHDRAWAL  | username: %s | amount: %.2f", username, withdraw_amount);
-                log_data(entry); 
-                    
+                char trxid[20] = {0};
+                generate_trxid(trxid, username, 'A');   
+                log_transaction(trxid, username, "", withdraw_amount, 1); 
             }
         }  
         else if(strncmp(command, "DEPOSIT", 8) == 0)
@@ -296,16 +301,14 @@ void main_menu(int sockfd)
             float deposit_amount;
             strcpy(username, &command[20]);
             read(sockfd, &deposit_amount, sizeof(float));
-            bool response = deposit(sockfd, username, deposit_amount);
+            bool response = deposit(username, deposit_amount);
             write(sockfd, &response, sizeof(bool));
 
             if(response == true)
             {
-                printf("data written successfully\n");
-                char entry[255];
-                sprintf(entry, "DEPOSITION  | username: %s | amount: %.2f", username, deposit_amount);
-                log_data(entry); 
-                    
+                char trxid[20] = {0};
+                generate_trxid(trxid, username, 'B');   
+                log_transaction(trxid, username, "", deposit_amount, 1); 
             }
             if(response == false)
             {
@@ -320,7 +323,7 @@ void main_menu(int sockfd)
             
             char entry[255];
             sprintf(entry, "LOGOUT      | username: %s", username);
-            log_data(entry);         
+            log_activity(entry);         
         } 
         else if(strncmp(command, "CHANGE-USERNAME", 15) == 0)
         {
@@ -337,7 +340,7 @@ void main_menu(int sockfd)
                 printf("username changed successfully\n");
                 char entry[255];
                 sprintf(entry, "USERNAME-CH | old username: %s | new username: %s", old_username, new_username);
-                log_data(entry); 
+                log_activity(entry); 
                     
             }
             if(response == false)
@@ -360,7 +363,7 @@ void main_menu(int sockfd)
                 printf("dob changed successfully\n");
                 char entry[255];
                 sprintf(entry, "DOB-CH      | username: %s | new date of birth: %s", username, new_date_of_birth);
-                log_data(entry); 
+                log_activity(entry); 
                     
             }
             if(response == false)
@@ -383,7 +386,7 @@ void main_menu(int sockfd)
                 printf("username changed successfully\n");
                 char entry[255];
                 sprintf(entry, "FAVANI-CH   | username: %s | new favourite animal: %s", username, new_favourite_animal);
-                log_data(entry); 
+                log_activity(entry); 
                     
             }
             if(response == false)
@@ -442,7 +445,7 @@ void user_signup(char command[])
 
     char entry[255];
     sprintf(entry, "SIGNUP      | username: %s ", user.username);
-    log_data(entry);
+    log_activity(entry);
 }
 int check_unique_username(char username[])
 {
@@ -727,12 +730,8 @@ user_info_package get_user_info(char username[])
     
     return target;
 }
-bool withdraw(int sockfd, char username[], float withdraw_amount)
+bool withdraw(char username[], float withdraw_amount)
 {
-    
-    read(sockfd, &withdraw_amount, sizeof(float));
-
-
     FILE *f;
     f = fopen("user_database.bin", "r+b");
     if(f == NULL)
@@ -772,7 +771,7 @@ bool withdraw(int sockfd, char username[], float withdraw_amount)
     fclose(f); 
     return response;
 }
-bool deposit(int sockfd, char username[], float deposit_amount)
+bool deposit(char username[], float deposit_amount)
 {
     printf("username: %s\n", username);
     printf("deposit amount: %f\n", deposit_amount);
@@ -812,6 +811,39 @@ bool deposit(int sockfd, char username[], float deposit_amount)
     
 
     return response;
+}
+bool transfer()
+{
+    return true;
+}
+void generate_trxid(char trxid[], char username[], const char type)
+{
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int millisecond;
+
+    long timestamp_b10;
+    char timestamp_b62[10];
+
+    char shortened_username[6];
+    snprintf(shortened_username, sizeof(shortened_username), "%s", username);
+    
+
+    generate_time(&day, &month, &year, &hour, &minute, &second, &millisecond);
+
+
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%02d%02d%04d%02d%02d%02d%03d",day, month, year, hour, minute, second, millisecond);
+
+    timestamp_b10 = strtol(buffer, NULL, 10); 
+
+    long_to_base62(timestamp_b10, timestamp_b62);
+
+    sprintf(trxid, "%c-%s-%s", type, timestamp_b62, shortened_username);
 }
 bool change_username(char old_username[], char new_username[])
 {
@@ -929,21 +961,99 @@ bool change_favourite_animal(char username[], char new_favourite_animal[])
 }
 
 
-void log_data(char entry[])
+void long_to_base62(long input, char output[])
+{
+    const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    char temp[32];
+    int i = 0;
+
+    if (input == 0) 
+    {
+        strcpy(output, "0");
+        return;
+    }
+
+    while (input > 0) 
+    {
+        temp[i++] = chars[input % 62];
+        input /= 62;
+    }
+
+    temp[i] = '\0';
+    
+    for (int j = 0; j < i; j++) 
+    {
+        output[j] = temp[i - j - 1];
+    }
+    output[i] = '\0';
+
+}
+void log_transaction(char trxid[], char sender[], const char receiver[], float amount, int status)
+{
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int millisecond;
+
+    generate_time(&day, &month, &year, &hour, &minute, &second, &millisecond);
+
+
+
+    FILE *f = fopen("logbook_transactions.log", "a");
+
+    if(f == NULL)
+        error("Logbook opening failed");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d:%03d] TRXID: %s | Sender: %65s | Receiver:%65s | Amount: %09.2f | Status: %d\n", day, month, year, hour, minute, second, millisecond, trxid, sender, receiver, amount, status);
+
+    flock(fd, LOCK_UN);
+    fclose(f);
+}
+void generate_time(int *day, int *month, int *year, int *hour, int *minute, int *second, int *millisecond) 
 {
     time_t now;
     struct tm *current;
-    time(&now); 
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    now = tv.tv_sec;
     current = localtime(&now);
 
-    int year = current->tm_year + 1900;
-    int month = current->tm_mon + 1;
-    int day = current->tm_mday;
-    int hour = current->tm_hour;
-    int minute = current->tm_min;
-    int second = current->tm_sec;
+    *year = current->tm_year + 1900;
+    *month = current->tm_mon + 1;
+    *day = current->tm_mday;
+    *hour = current->tm_hour;
+    *minute = current->tm_min;
+    *second = current->tm_sec;
+    *millisecond = tv.tv_usec / 1000;
+}
+void log_activity(char entry[])
+{
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int millisecond;
 
-    FILE *f = fopen("logbook.txt", "a");
+    generate_time(&day, &month, &year, &hour, &minute, &second, &millisecond);
+
+
+
+
+    FILE *f = fopen("logbook_activity.log", "a");
 
     if(f == NULL)
         error("Logbook opening failed");
@@ -958,7 +1068,7 @@ void log_data(char entry[])
 
     
 
-    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d] %s\n", day, month, year, hour, minute, second, entry);
+    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d:%03d] %s\n", day, month, year, hour, minute, second, millisecond, entry);
 
     flock(fd, LOCK_UN);
     fclose(f);
