@@ -79,14 +79,17 @@ bool change_password(char username[], char new_password[], char salt[]);
 user_info_package get_user_info(char username[]);
 bool withdraw(char username[], float withdraw_amount);
 bool deposit(char username[], float deposit_amount);
+bool transfer(char sender_username[], char account_no[], float transfer_amount);
 void generate_trxid(char trxid[], char username[], const char type);
 bool change_username(char old_username[], char new_username[]);
 bool change_date_of_birth(char username[], char new_date_of_birth[]);
 bool change_favourite_animal(char username[], char new_favourite_animal[]);
+void view_transactions(int sockfd, char username[]);    
 
 void long_to_base62(long input, char output[]);
 void generate_time(int *day, int *month, int *year, int *hour, int *minute, int *second, int *millisecond);
-void log_transaction(char trxid[], char sender[], const char receiver[], float amount, int status);
+void log_transaction(char trxid[], char sender[], const char receiver[], float amount, const char status[]);
+void update_log(char trxid[], const char status[]);
 void log_activity(char entry[]);
 void error(const char message[]);
 
@@ -185,7 +188,7 @@ void main_menu(int sockfd)
     {
         char command[256] = {0};
         int n = read(sockfd, command, 256);
-        printf("%s\n", command);
+        //printf("%s\n", command);
 
         if(n < 0)
             error("Error on reading.");
@@ -194,17 +197,17 @@ void main_menu(int sockfd)
 
         if(strncmp(command, "USERNAME-CHECK", 14) == 0)
         {
-            printf("checking username\n");
+            //printf("checking username\n");
             char username[65];
             strcpy(username, &command[20]);
-            printf("Username: %s\n", username);
+            //printf("Username: %s\n", username);
             bool response = check_unique_username(username);
             
             write(sockfd, &response, sizeof(bool));     
         }
         else if(strncmp(command, "REQ-ACC-NO", 10) == 0)
         {
-            printf("Generating acc no\n");
+            //printf("Generating acc no\n");
             char account_no[14];
             generate_acc_no(account_no);
             write(sockfd, &account_no, sizeof(account_no));
@@ -228,7 +231,7 @@ void main_menu(int sockfd)
             
            if(response == true)
            {
-                printf("Login success.\n");
+                //printf("Login success.\n");
                 char entry[255];
                 sprintf(entry, "LOGIN       | username: %s", username);
                 log_activity(entry); 
@@ -264,7 +267,7 @@ void main_menu(int sockfd)
 
             if(response == true)
             {
-                    printf("Pass change success.\n");
+                    //printf("Pass change success.\n");
                     char entry[255];
                     sprintf(entry, "PASS-CH     | username: %s", username);
                     log_activity(entry); 
@@ -285,15 +288,19 @@ void main_menu(int sockfd)
             float withdraw_amount;
             strcpy(username, &command[20]);
             read(sockfd, &withdraw_amount, sizeof(float));
+
+            char trxid[20] = {0};
+            generate_trxid(trxid, username, 'A');   
+            log_transaction(trxid, username, "", withdraw_amount, "pend"); 
+
             bool response = withdraw(username, withdraw_amount);
             write(sockfd, &response, sizeof(bool));
 
             if(response == true)
-            {
-                char trxid[20] = {0};
-                generate_trxid(trxid, username, 'A');   
-                log_transaction(trxid, username, "", withdraw_amount, 1); 
-            }
+                update_log(trxid, "comp");
+            else
+                update_log(trxid, "fail");
+
         }  
         else if(strncmp(command, "DEPOSIT", 8) == 0)
         {
@@ -301,20 +308,43 @@ void main_menu(int sockfd)
             float deposit_amount;
             strcpy(username, &command[20]);
             read(sockfd, &deposit_amount, sizeof(float));
+
+            char trxid[20] = {0};
+            generate_trxid(trxid, username, 'B');   
+            log_transaction(trxid, username, "", deposit_amount, "pend"); 
+
             bool response = deposit(username, deposit_amount);
             write(sockfd, &response, sizeof(bool));
 
             if(response == true)
-            {
-                char trxid[20] = {0};
-                generate_trxid(trxid, username, 'B');   
-                log_transaction(trxid, username, "", deposit_amount, 1); 
-            }
-            if(response == false)
-            {
-                printf("failed to write data\n");
-            }
+                update_log(trxid, "comp");
+            
+            else
+                update_log(trxid, "fail");
+                
         } 
+        else if(strncmp(command, "ACC-NO-CHECK", 12) == 0)
+        {
+            char account_no[14];
+            strcpy(account_no, &command[20]);
+            
+            bool response = check_unique_account_no(account_no);
+            write(sockfd, &response, sizeof(bool));
+                
+        }
+        else if(strncmp(command, "TRANSFER", 8) == 0)
+        {
+            char sender_username[65];
+            strcpy(sender_username, &command[20])
+            char account_no[14];
+            strcpy(account_no, &command[85]);
+
+            float transfer_amount;
+            read(sockfd, &transfer_amount, sizeof(float));
+            
+            transfer()
+                
+        }
         else if(strncmp(command, "LOGOUT", 6) == 0)
         {
             char username[65];
@@ -337,7 +367,7 @@ void main_menu(int sockfd)
 
             if(response == true)
             {
-                printf("username changed successfully\n");
+                //printf("username changed successfully\n");
                 char entry[255];
                 sprintf(entry, "USERNAME-CH | old username: %s | new username: %s", old_username, new_username);
                 log_activity(entry); 
@@ -360,7 +390,7 @@ void main_menu(int sockfd)
 
             if(response == true)
             {
-                printf("dob changed successfully\n");
+                //printf("dob changed successfully\n");
                 char entry[255];
                 sprintf(entry, "DOB-CH      | username: %s | new date of birth: %s", username, new_date_of_birth);
                 log_activity(entry); 
@@ -383,7 +413,7 @@ void main_menu(int sockfd)
 
             if(response == true)
             {
-                printf("username changed successfully\n");
+                //printf("username changed successfully\n");
                 char entry[255];
                 sprintf(entry, "FAVANI-CH   | username: %s | new favourite animal: %s", username, new_favourite_animal);
                 log_activity(entry); 
@@ -393,7 +423,15 @@ void main_menu(int sockfd)
             {
                 printf("failed to write data\n");
             }
-        } 
+        }
+        else if(strncmp(command, "VIEW-TRX", 8) == 0)
+        {
+            char username[65];
+            
+            strcpy(username, &command[20]);
+            
+            view_transactions(sockfd, username);     
+        }  
 
 
         
@@ -410,7 +448,7 @@ void main_menu(int sockfd)
 
 void user_signup(char command[])
 {
-    printf("SIGNUP\n");
+    //printf("SIGNUP\n");
     
     user_info user;
     
@@ -565,7 +603,7 @@ void send_salt(int sockfd, char username[])
     flock(fd, LOCK_UN);
     fclose(f);
 
-    printf("Salt: %s\n", salt);
+    //printf("Salt: %s\n", salt);
 
     write(sockfd, &salt, sizeof(salt));
 
@@ -589,8 +627,8 @@ bool check_password(char username[], char password[])
         error("flock() failed.\n");
     }
 
-    printf("username: %s\n"
-            "password: %s\n", username, password);
+    //printf("username: %s\n"
+    //        "password: %s\n", username, password);
 
     
 
@@ -635,7 +673,7 @@ bool forgot_password(char username[], char date_of_birth[], char favourite_anima
         if(strcmp(user.username, username) == 0 && strcmp(user.date_of_birth, date_of_birth) == 0 && strcmp(user.favourite_animal, favourite_animal) == 0)
         {
             response = true;
-            printf("MATCH FOUND.\n");
+            //printf("MATCH FOUND.\n");
             break;
         }
     }
@@ -690,7 +728,7 @@ bool change_password(char username[], char new_password[], char salt[])
 
 user_info_package get_user_info(char username[])
 {
-    printf("username: %s\n", username);
+    //printf("username: %s\n", username);
     FILE *f;
 
     f = fopen("user_database.bin", "rb");
@@ -773,8 +811,8 @@ bool withdraw(char username[], float withdraw_amount)
 }
 bool deposit(char username[], float deposit_amount)
 {
-    printf("username: %s\n", username);
-    printf("deposit amount: %f\n", deposit_amount);
+    //printf("username: %s\n", username);
+    //printf("deposit amount: %f\n", deposit_amount);
 
 
     FILE *f;
@@ -812,9 +850,9 @@ bool deposit(char username[], float deposit_amount)
 
     return response;
 }
-bool transfer()
+bool transfer(char sender_username[], char account_no[], float transfer_amount)
 {
-    return true;
+    
 }
 void generate_trxid(char trxid[], char username[], const char type)
 {
@@ -959,7 +997,37 @@ bool change_favourite_animal(char username[], char new_favourite_animal[])
     fclose(f);
     return response;
 }
+void view_transactions(int sockfd, char username[])
+{
+    FILE *f;
 
+    f = fopen("logbook_transactions", "r");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    char entry[255];
+    
+
+    while(fgets(entry, sizeof(entry), f) != NULL)
+    {
+        //46th index;
+        if(strncmp(&entry[46], username, 5) == 0)
+        {
+            printf("%s", entry);
+        }
+    }
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+}
 
 void long_to_base62(long input, char output[])
 {
@@ -988,7 +1056,7 @@ void long_to_base62(long input, char output[])
     output[i] = '\0';
 
 }
-void log_transaction(char trxid[], char sender[], const char receiver[], float amount, int status)
+void log_transaction(char trxid[], char sender[], const char receiver[], float amount, const char status[])
 {
     int year;
     int month;
@@ -1015,10 +1083,41 @@ void log_transaction(char trxid[], char sender[], const char receiver[], float a
         error("flock() failed.\n");
     }
 
-    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d:%03d] TRXID: %s | Sender: %65s | Receiver:%65s | Amount: %09.2f | Status: %d\n", day, month, year, hour, minute, second, millisecond, trxid, sender, receiver, amount, status);
+    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d:%03d] TRXID: %s | Sender: %65s | Receiver:%65s | Amount: %09.2f | Status: %s\n", day, month, year, hour, minute, second, millisecond, trxid, sender, receiver, amount, status);
 
     flock(fd, LOCK_UN);
     fclose(f);
+}
+void update_log(char trxid[], const char status[])
+{
+    FILE* f = fopen("logbook_transactions.log", "r+");
+
+    char buffer[256];
+    
+    while(fgets(buffer, sizeof(buffer), f) != NULL)
+    {
+        //printf("%s", buffer);
+        if(strstr(buffer, trxid) != NULL)
+        {
+            char* targetPointer = strstr(buffer, "pend");
+
+            int i = 0;
+            while(status[i] != '\0')
+            {
+                *targetPointer = status[i++];
+                targetPointer++;
+            }
+            //*targetPointer = '\0'; 
+            
+
+            fseek(f, -strlen(buffer), SEEK_CUR);
+            fputs(buffer, f);
+            printf("Edited successfully\n");
+            fclose(f);
+            break;
+            
+        }
+    }
 }
 void generate_time(int *day, int *month, int *year, int *hour, int *minute, int *second, int *millisecond) 
 {

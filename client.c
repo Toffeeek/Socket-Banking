@@ -72,7 +72,7 @@ void change_password_homepage(int sockfd, char username[]);
 void change_date_of_birth(int sockfd, char username[]);
 void change_favourite_animal(int sockfd, char username[]);
 bool check_password(int sockfd, char username[]);
-void request_statement(int sockfd, user_info user);
+void view_transactions(int sockfd, user_info user);
 
 
 
@@ -640,7 +640,7 @@ void user_signup(int sockfd)
 
     user_input_signup(sockfd, username, password, salt, date_of_birth, favourite_animal);
 
-    if(strcmp(username, "0") == 0)
+    if(strcmp(date_of_birth, "0") == 0)
         return;
 
     package_command(command, "REQ-ACC-NO", "", "", "", "", "", "");
@@ -653,7 +653,7 @@ void user_signup(int sockfd)
     if(n < 0)
             error("Error on writing.");
 
-    printf("Generated acc no\n");
+    //printf("Generated acc no\n");
 
 
     package_command(command, "SIGNUP", username, password, date_of_birth, favourite_animal, account_no, salt);
@@ -663,6 +663,7 @@ void user_signup(int sockfd)
     read(sockfd, &response, sizeof(response));
     if(response == true)
     {
+        clear_screen();
         printf("Account creation successful. Your account number is %s\n\n", account_no);
     }
     else
@@ -695,8 +696,8 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
         }
         sha256(username, 0, username);
         package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
-        printf("%s\n", command);
-        printf("%s\n", &command[20]);
+        //printf("%s\n", command);
+        //printf("%s\n", &command[20]);
         write(sockfd, &command, sizeof(command));
         read(sockfd, &response, sizeof(bool));
         if(response == false)
@@ -705,7 +706,7 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
         }
     }
 
-    printf("Username validated.\n");
+    //printf("Username validated.\n");
 
     
 
@@ -727,7 +728,7 @@ void user_input_signup(int sockfd, char username[], char password[], char salt[]
         goto LABEL03;
     }
 
-    printf("Salt: %s\n", salt);
+    //printf("Salt: %s\n", salt);
 }
 
 
@@ -740,7 +741,7 @@ void user_login(int sockfd)
     if(strcmp(username, "0") == 0)
         return;
 
-    printf("Login initiated.\n");
+    //("Login initiated.\n");
     clear_screen();
     homepage(sockfd, username);
 
@@ -761,17 +762,17 @@ void user_input_login(int sockfd, char username[])
     sha256(username, 0, username);
 
     package_command(command, "USERNAME-CHECK", username, "", "", "", "", "");
-    printf("%s\n", command);
-    printf("%s\n", &command[20]);
+    //printf("%s\n", command);
+    //printf("%s\n", &command[20]);
     write(sockfd, &command, 256);
     read(sockfd, &response, sizeof(bool));
     if(response == true)
     {
-        printf("response = true\n");
+        //printf("response = true\n");
     }
     if(response == false)
     {
-        printf("response = false\n");
+        //printf("response = false\n");
     }
     
     if(response == true)
@@ -780,7 +781,7 @@ void user_input_login(int sockfd, char username[])
         goto LABEL01;
     }
 
-    printf("Username validated.\n");
+    //printf("Username validated.\n");
 
     LABEL02:
     
@@ -915,7 +916,7 @@ void homepage(int sockfd, char username[])
                "3. Transfer to another account\n"
                "4. Check Balance\n"
                "5. Change Account Details\n"
-               "6. View Account Activity\n"
+               "6. View Account History\n"
                "7. Logout\n"
                "Please select an operation (1-7): ");
         scanf("%d", &choice);
@@ -938,7 +939,8 @@ void homepage(int sockfd, char username[])
             case  5:    change_account_details(sockfd, user);
                         break;
 
-            case  6:    request_statement(sockfd, user);
+            case  6:    view_transactions(sockfd, user);
+                        break;
 
             case  7:    clear_screen();
                         printf("Thank you for banking this us!\n");
@@ -1018,7 +1020,7 @@ void withdraw(int sockfd, user_info user)
         else
         {
             clear_screen();
-            printf("Inufficient balance.\n");
+            printf("Insufficient balance.\n");
         }         
     }
 }
@@ -1080,31 +1082,27 @@ void transfer(int sockfd, user_info user)
     char command[256];
     float transfer_amount;
 
-    LABEL01:
-    while(1)
-    {   
         
-        bool response = false;
-        while(response = false)
+    bool response = true;
+    while(response == true)
+    {
+        clear_screen();
+        get_account_no(account_number, "Please enter the account number of the transferee (0 to go back): ");
+        if(strcmp(account_number, "0") == 0)
         {
-            clear_screen();
-            get_account_no(account_number, "Please enter the account number of the transferee (0 to go back): ");
-            if(strcmp(account_number, "0") == 0)
-            {
-                return;
-            }
+            return;
+        }
 
-            package_command(command, "ACC-NO-CHECK", account_number, "", "", "", "", "");
-            write(sockfd, command, 256);
-            read(sockfd, &response, sizeof(bool));
+        package_command(command, "ACC-NO-CHECK", account_number, "", "", "", "", "");
+        write(sockfd, command, 256);
+        read(sockfd, &response, sizeof(bool));
 
-            if(response == false)
-            {
-                printf("Account number not found.\n");
-            }
+        if(response == true)
+        {
+            printf("Account number not found.\n");
         }
     }
-        
+
     while(1)
     {
         clear_screen();
@@ -1115,7 +1113,7 @@ void transfer(int sockfd, user_info user)
         {
             getchar();
             printf("Invalid amount. Try again.\n");
-            goto LABEL01;
+            continue;
         }
         getchar();
         if(transfer_amount == 0)
@@ -1138,20 +1136,20 @@ void transfer(int sockfd, user_info user)
             if(response == true)
             {
                 clear_screen();
-                printf("Withdrawal successful, returning to homepage\n\n");
+                printf("Transfer successful, returning to homepage\n\n");
                 return;
             }
             else
             {
                 clear_screen();
-                printf("Invalid amount. Try again.\n");
+                printf("Transaction failed. Try again.\n");
             }
             
         }
         else
         {
             clear_screen();
-            printf("Inufficient balance.\n");
+            printf("Insufficient balance.\n");
         }         
     }
 
@@ -1344,8 +1342,14 @@ bool check_password(int sockfd, char username[])
         
 
 }
-void request_statement(int sockfd, user_info user)
+void view_transactions(int sockfd, user_info user)
 {
+    char command[256];
+    package_command(command, "VIEW-TRX", user.username, "", "", "", "", "");
+    write(sockfd, command, sizeof(command));
+    bool response;
+    //read(sockfd, &response, sizeof(response));
+
 
 }
 
