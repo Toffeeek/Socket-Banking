@@ -84,7 +84,9 @@ void generate_trxid(char trxid[], char username[], const char type);
 bool change_username(char old_username[], char new_username[]);
 bool change_date_of_birth(char username[], char new_date_of_birth[]);
 bool change_favourite_animal(char username[], char new_favourite_animal[]);
-void view_transactions(int sockfd, char username[]);    
+void view_transactions(int sockfd, char username[], char account_no[]);  
+char *decode_entry(char entry[], int type);
+void searchByUsername(char account_no[], char username[]);
 
 void long_to_base62(long input, char output[]);
 void generate_time(int *day, int *month, int *year, int *hour, int *minute, int *second, int *millisecond);
@@ -264,17 +266,18 @@ void main_menu(int sockfd)
             strcpy(salt, &command[196]);
             bool response = change_password(username, new_password, salt);
             write(sockfd, &response, sizeof(bool));
-
+    
             if(response == true)
             {
-                    //printf("Pass change success.\n");
-                    char entry[255];
-                    sprintf(entry, "PASS-CH     | username: %s", username);
-                    log_activity(entry); 
-                    
+                //printf("Pass change success.\n");
+                char entry[255];
+                sprintf(entry, "PASS-CH     | username: %s", username);
+                log_activity(entry); 
             } 
 
         }
+
+        
         else if(strncmp(command, "GET-USER-INFO", 13) == 0)
         {
             char username[65];
@@ -335,14 +338,26 @@ void main_menu(int sockfd)
         else if(strncmp(command, "TRANSFER", 8) == 0)
         {
             char sender_username[65];
-            strcpy(sender_username, &command[20])
+            strcpy(sender_username, &command[20]);
             char account_no[14];
             strcpy(account_no, &command[85]);
 
             float transfer_amount;
             read(sockfd, &transfer_amount, sizeof(float));
+
+            char trxid[20] = {0};
+            generate_trxid(trxid, sender_username, 'C');   
+            log_transaction(trxid, sender_username, account_no, transfer_amount, "pend"); 
             
-            transfer()
+            bool response = transfer(sender_username, account_no, transfer_amount);
+
+            write(sockfd, &response, sizeof(bool));
+
+            if(response == true)
+                update_log(trxid, "comp");
+            
+            else
+                update_log(trxid, "fail");
                 
         }
         else if(strncmp(command, "LOGOUT", 6) == 0)
@@ -427,10 +442,13 @@ void main_menu(int sockfd)
         else if(strncmp(command, "VIEW-TRX", 8) == 0)
         {
             char username[65];
-            
+            char account_no[14];
             strcpy(username, &command[20]);
+            strcpy(account_no, &command[85]);
+
+
             
-            view_transactions(sockfd, username);     
+            view_transactions(sockfd, username, account_no);     
         }  
 
 
@@ -852,7 +870,98 @@ bool deposit(char username[], float deposit_amount)
 }
 bool transfer(char sender_username[], char account_no[], float transfer_amount)
 {
-    
+    FILE *f;
+    f = fopen("user_database.bin", "r+b");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info users;
+    float old_sum;
+    float new_sum;
+    bool user_found = false;
+
+    while(fread(&users, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(users.username, sender_username) == 0)
+        {    
+            user_found = true;
+            if(users.balance >= transfer_amount)
+            {
+                old_sum = users.balance;
+                users.balance -= transfer_amount;
+                new_sum = users.balance;
+
+                fseek(f, -sizeof(user_info), SEEK_CUR);  
+                fwrite(&users, sizeof(user_info), 1, f);    
+                printf("deducted from sender\n");    
+                break;
+            }
+            else
+            {
+                flock(fd, LOCK_UN);
+                fclose(f); 
+                return false;  
+            }
+                
+        }
+    }
+    if(user_found == false)
+    {
+        flock(fd, LOCK_UN);
+        fclose(f); 
+        return false;
+    }
+
+    fseek(f, 0, SEEK_SET);  
+        
+    printf("account  number: %s\n", account_no);
+
+    user_found = false;
+    while(fread(&users, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(users.account_no, account_no) == 0)
+        {    
+            user_found = true;
+            
+            old_sum += users.balance;
+            users.balance += transfer_amount;
+            new_sum += users.balance;
+
+            fseek(f, -sizeof(user_info), SEEK_CUR);  
+            fwrite(&users, sizeof(user_info), 1, f);  
+            printf("added to receiver\n");        
+            break;
+            
+        }
+    }
+
+    printf("old sum:  %f\n", old_sum);
+    printf("new sum:  %f\n", new_sum);
+
+    if(user_found == false || old_sum != new_sum)
+    {
+        flock(fd, LOCK_UN);
+        fclose(f); 
+        if(user_found == false)
+            printf("user found = false\n");  
+        if(old_sum != new_sum)
+            printf("old sum != new sum\n");  
+
+        return false;
+    }
+        
+    flock(fd, LOCK_UN);
+    fclose(f); 
+    return true;
+
 }
 void generate_trxid(char trxid[], char username[], const char type)
 {
@@ -997,11 +1106,11 @@ bool change_favourite_animal(char username[], char new_favourite_animal[])
     fclose(f);
     return response;
 }
-void view_transactions(int sockfd, char username[])
+void view_transactions(int sockfd, char username[], char account_no[])
 {
     FILE *f;
 
-    f = fopen("logbook_transactions", "r");
+    f = fopen("logbook_transactions.log", "r");
     if(f == NULL)
         error("File opening failed.\n");
 
@@ -1013,16 +1122,199 @@ void view_transactions(int sockfd, char username[])
         error("flock() failed.\n");
     }
 
-    char entry[255];
+    char entry[256];
     
 
     while(fgets(entry, sizeof(entry), f) != NULL)
     {
         //46th index;
-        if(strncmp(&entry[46], username, 5) == 0)
+        if(strstr(entry, username) != NULL)
         {
-            printf("%s", entry);
+            char* decoded_str = decode_entry(entry, 1);
+            write(sockfd, decoded_str, 256);
+            free(decoded_str);
         }
+        else if(strstr(entry, account_no) != NULL)
+        {
+            char* decoded_str = decode_entry(entry, 2);
+            write(sockfd, decoded_str, 256);
+            free(decoded_str);
+        }
+    }
+
+    strcpy(entry, "EOF");
+    write(sockfd, entry, sizeof(entry));
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+}
+char *decode_entry(char entry[], int type)
+{
+    char s_date[3] = {0};
+    char s_month[3] = {0};
+    char s_year[5] = {0};
+    char timestamp[13] = {0};
+    char trxid[19] = {0};
+    char s_amount[10] = {0};
+    char s_status[5] = {0};
+    char receiver[14] = {0};
+
+
+    strncpy(s_date, &entry[1], 2);
+    strncpy(s_month, &entry[4], 2);
+    strncpy(s_year, &entry[7], 4);
+    strncpy(timestamp, &entry[12], 12);
+    strncpy(trxid, &entry[33], 18);
+    strncpy(s_amount, &entry[215], 9);
+    strncpy(s_status, &entry[235], 4);
+
+    if(trxid[0] == 'C')
+    {
+        strncpy(receiver, &entry[191], 13);
+    }
+
+
+    int date = atoi(s_date);
+    int i_month = atoi(s_month);
+    int year = atoi(s_year);
+
+    char suff[3];
+
+    switch(date % 10)
+    {
+        case 1:    
+            if(date/10 == 1)
+                strcpy(suff, "th");
+            else
+                strcpy(suff, "st");
+            break;
+
+        case 2:    
+            if(date/10 == 1)
+                strcpy(suff, "th");
+            else
+                strcpy(suff, "nd");
+            break;
+
+        case 3:    
+            if(date/10 == 1)
+                strcpy(suff, "th");
+            else
+                strcpy(suff, "rd");
+            break;
+        
+        default:     strcpy(suff, "th");
+        
+    }
+    
+
+    char month[10];
+
+    switch(i_month)
+    {
+        case 1: strcpy(month, "January");
+                break;
+        case 2: strcpy(month, "February");
+                break;
+        case 3: strcpy(month, "March");
+                break;
+        case 4: strcpy(month, "April");
+                break;
+        case 5: strcpy(month, "May");
+                break;
+        case 6: strcpy(month, "June");
+                break;
+        case 7: strcpy(month, "July");
+                break;
+        case 8: strcpy(month, "August");
+                break;
+        case 9: strcpy(month, "September");
+                break;
+        case 10: strcpy(month, "October");
+                break;
+        case 11: strcpy(month, "November");
+                break;
+        case 12: strcpy(month, "December");
+                break;
+        default: strcpy(month, "\0");
+    }
+
+    char t_type[13];
+
+    switch(trxid[0])
+    {
+        case 'A':   strcpy(t_type, "withdrawal");
+                    break;
+        case 'B':   strcpy(t_type, "deposition");
+                    break;
+        case 'C':   strcpy(t_type, "transfer-out");
+                    break;
+        default: strcpy(t_type, "\0");
+    }
+
+    char status[12]; 
+
+    if(strcmp(s_status, "comp") == 0)
+        strcpy(status, "successful");
+    else if(strcmp(s_status, "pend") == 0)
+        strcpy(status, "pending");
+    else if(strcmp(s_status, "fail") == 0)
+        strcpy(status, "failed");
+
+    float amount = strtof(s_amount, NULL);
+
+    if(type == 2)
+    {
+        char account_no[14];
+        char username[65] = {0};
+        strncpy(username, &entry[63], 64);
+        //printf("username %s\n", username);
+        searchByUsername(account_no, username);
+        strcpy(t_type, "transfer-in");
+        printf("trasnfer in acc no %s\n", account_no);
+        strcpy(receiver, account_no);
+        
+    }
+
+
+    char *decoded_str = (char*)malloc(256);
+
+
+
+    sprintf(decoded_str, "%02d%s %11s, %d | %s | %s | %12s | %15s | %09.2f | %s", date, suff, month, year, timestamp, trxid, t_type, receiver, amount, status);
+
+    //printf("%s\n", decoded_str);
+
+    return decoded_str;
+
+}
+void searchByUsername(char account_no[], char username[])
+{
+    FILE *f;
+
+    f = fopen("user_database.bin", "rb");
+
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info user;
+    bool response = false;
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.username, username) == 0)
+        {
+            strcpy(account_no, user.account_no);
+            break;
+        }       
     }
 
     fclose(f);

@@ -73,7 +73,8 @@ void change_date_of_birth(int sockfd, char username[]);
 void change_favourite_animal(int sockfd, char username[]);
 bool check_password(int sockfd, char username[]);
 void view_transactions(int sockfd, user_info user);
-
+void decode_entry(char entry[]);
+void download_trx(int sockfd, user_info user);
 
 
 void admin_registration(int sockfd);
@@ -592,7 +593,7 @@ void salter(char input[], char salt[])
 void main_menu(int sockfd)
 {
     clear_screen();
-    printf("Welcome to Jashim Bank.\n");
+    printf("Welcome to TNI Bank!\n\n");
 
     while(1)
     {
@@ -904,21 +905,22 @@ void change_password(int sockfd, char username[])
 
 void homepage(int sockfd, char username[])
 {
-    printf("Welcome user\n\n");
+    printf("Welcome!\n");
     int choice;
 
     while(1)
     {
-        //flush_socket(sockfd);
         user_info user = get_user_info(sockfd, username);
-        printf("1. Withdraw money\n"
+        printf("Account number: %s\n"
+                "Balance: %.2f\n\n"
+                "1. Withdraw money\n"
                "2. Deposit money\n"
                "3. Transfer to another account\n"
-               "4. Check Balance\n"
+               "4. Update Balance\n"
                "5. Change Account Details\n"
-               "6. View Account History\n"
+               "6. View Transaction History\n"
                "7. Logout\n"
-               "Please select an operation (1-7): ");
+               "Please select an operation (1-7): ", user.account_no, user.balance);
         scanf("%d", &choice);
         getchar();
 
@@ -943,7 +945,7 @@ void homepage(int sockfd, char username[])
                         break;
 
             case  7:    clear_screen();
-                        printf("Thank you for banking this us!\n");
+                        printf("Thank you for banking with us!\n\n");
                         char command[256];
                         package_command(command, "LOGOUT", username, "", "", "", "", "");
                         write(sockfd, command, 256);
@@ -1078,6 +1080,7 @@ void deposit(int sockfd, user_info user)
 }
 void transfer(int sockfd, user_info user)
 {
+    clear_screen();
     char account_number[14];
     char command[256];
     float transfer_amount;
@@ -1086,7 +1089,6 @@ void transfer(int sockfd, user_info user)
     bool response = true;
     while(response == true)
     {
-        clear_screen();
         get_account_no(account_number, "Please enter the account number of the transferee (0 to go back): ");
         if(strcmp(account_number, "0") == 0)
         {
@@ -1099,9 +1101,11 @@ void transfer(int sockfd, user_info user)
 
         if(response == true)
         {
-            printf("Account number not found.\n");
+            clear_screen;
+            printf("Account number does not exist. Try again.\n");
         }
     }
+
 
     while(1)
     {
@@ -1154,8 +1158,7 @@ void transfer(int sockfd, user_info user)
     }
 
             
-        
-    
+
     
 }
 void check_balance(int sockfd, user_info user)
@@ -1163,7 +1166,7 @@ void check_balance(int sockfd, user_info user)
     //flush_socket(sockfd);
     user = get_user_info(sockfd, user.username);
     clear_screen();
-    printf("Balance: Tk%.2f\n\n", user.balance);
+    printf("Balance: Tk%.2f", user.balance);
 }
 void change_account_details(int sockfd, user_info user)
 {
@@ -1345,12 +1348,82 @@ bool check_password(int sockfd, char username[])
 void view_transactions(int sockfd, user_info user)
 {
     char command[256];
-    package_command(command, "VIEW-TRX", user.username, "", "", "", "", "");
+    package_command(command, "VIEW-TRX", user.username, user.account_no, "", "", "", "");
     write(sockfd, command, sizeof(command));
-    bool response;
-    //read(sockfd, &response, sizeof(response));
+    
+    char buffer[256] = {0};
+
+    printf("\n\n----------------------------------------------------BANK STATEMENT--------------------------------------------------\n\n");
+    printf("%22s | %12s | %18s | %12s | %s | %9s | Status\n", "Date", "Timestamp", "Transaction ID", "Type", "Receiver/Sender", "Amount");
+    printf("--------------------------------------------------------------------------------------------------------------------\n");
+    while(1)
+    {
+        read(sockfd, buffer, sizeof(buffer));
+
+        if(strcmp(buffer, "EOF") != 0)
+        {
+            printf("%s\n", buffer);
+        }
+        else 
+            break;
+
+    }
+    printf("\n-------------------------------------------------END OF TRANSACTIONS------------------------------------------------\n");
+
+    int choice;
+
+    while(1)
+    {
+        printf("1. Download history\n"
+            "2. Return to home screen\n"
+            "Please select an operation (1-2): ");
+        scanf("%d", &choice);
+        getchar();
+        switch (choice)
+        {
+            case  1:    download_trx(sockfd, user);
+                        return;
+
+            case  2:    return;
+
+            default:    clear_screen();
+                        printf("Invalid choice.\n\n");
+        }
+    }
+    
 
 
+}
+void download_trx(int sockfd, user_info user)
+{
+    char output_file[64];
+    sprintf(output_file, "%s_transaction_history.txt", user.account_no);
+    FILE* f = fopen(output_file, "w");
+    
+    char command[256];
+    package_command(command, "VIEW-TRX", user.username, user.account_no, "", "", "", "");
+    write(sockfd, command, sizeof(command));
+    
+    char buffer[256] = {0};
+
+    fprintf(f, "----------------------------------------------------BANK STATEMENT--------------------------------------------------\n\n");
+    fprintf(f, "%22s | %12s | %18s | %12s | %s | %9s | Status\n", "Date", "Timestamp", "Transaction ID", "Type", "Receiver/Sender", "Amount");
+    fprintf(f, "-----------------------+--------------+-----------------------------------+-----------------+-----------+------------\n");
+    while(1)
+    {
+        read(sockfd, buffer, sizeof(buffer));
+
+        if(strcmp(buffer, "EOF") != 0)
+        {
+            fprintf(f, "%s\n", buffer);
+        }
+        else 
+            break;
+
+    }
+    fprintf(f, "\n-------------------------------------------------END OF TRANSACTIONS------------------------------------------------\n");
+
+    fclose(f);
 }
 
 
@@ -1365,14 +1438,6 @@ void admin_login(int sockfd)
 
 }
 
-
-
-/*void flush_socket(int sockfd) 
-{
-    char buf[512];
-    while (recv(sockfd, buf, sizeof(buf), MSG_DONTWAIT) > 0) 
-    {}
-}*/
 void error(const char *message)
 {
     perror(message);
