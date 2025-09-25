@@ -61,8 +61,10 @@ typedef struct
 {
     char username[65];
     char password[65];
+    char salt[17];
 
 } admin_info;
+
 
 void main_menu(int newsockfd);
 int check_unique_username(char username[]);
@@ -70,7 +72,6 @@ void generate_acc_no(char account_no[]);
 bool check_unique_account_no(char account_no[]);
 
 void user_signup(char command[]);
-void user_login(int sockfd, char command[]);
 void send_salt(int sockfd, char username[]);
 bool check_password(char username[], char password[]);
 bool forgot_password(char username[], char date_of_birth[], char favourite_animal[]);
@@ -94,6 +95,16 @@ void log_transaction(char trxid[], char sender[], const char receiver[], float a
 void update_log(char trxid[], const char status[]);
 void log_activity(char entry[]);
 void error(const char message[]);
+
+bool admin_registration(char username[], char password[], char salt[]);
+bool check_unique_username_admin(char username[]);
+void admin_login(int sockfd);
+void send_salt_admin(int sockfd, char username[]);
+bool check_password_admin(char username[], char password[]);
+bool reset_login(char account_no[], char username[], char password[], char salt[]);
+
+void log_activity_admin(char entry[]);
+
 
 
 int main(int argc, char *argv[])
@@ -157,6 +168,12 @@ int main(int argc, char *argv[])
             FILE *f = fopen("user_database.bin", "ab");   
             fclose(f);
             f = fopen("admin_database.bin", "ab");
+            fclose(f);
+            f = fopen("logbook_activity.log", "a");
+            fclose(f);
+            f = fopen("logbook_transactions.log", "a");
+            fclose(f);
+            f = fopen("logbook_activity_admin.log", "a");
             fclose(f);
 
             main_menu(newsockfd); 
@@ -450,6 +467,192 @@ void main_menu(int sockfd)
             
             view_transactions(sockfd, username, account_no);     
         }  
+        else if(strncmp(command, "AD-USERNAME-CHECK", 17) == 0)
+        {
+            
+            char username[65];
+            strcpy(username, &command[20]);
+            
+            bool response = check_unique_username_admin(username);
+            
+            write(sockfd, &response, sizeof(bool));     
+        }
+        else if(strncmp(command, "AD-SIGNUP", 9) == 0)
+        {
+            //printf("command signup ad\n");
+            char username[65];
+            char password[65];
+            char salt[17];
+            strcpy(username, &command[20]);
+            strcpy(password, &command[85]);
+            strcpy(salt, &command[196]);
+            bool response = admin_registration(username, password, salt);
+            
+            write(sockfd, &response, sizeof(response));
+        }
+        else if(strncmp(command, "AD-PASS-CHECK", 13) == 0)
+        {
+           char username[65] = {0};
+           strcpy(username, &command[20]);
+           send_salt_admin(sockfd, username);
+           char password[65] = {0};
+           read(sockfd, &password, sizeof(password));
+
+           bool response = check_password_admin(username, password); 
+           write(sockfd, &response, sizeof(bool));   
+            
+           if(response == true)
+           {
+                //printf("Login success.\n");
+                char entry[255];
+                sprintf(entry, "LOGIN       | username: %s", username);
+                log_activity_admin(entry); 
+                
+           } 
+        }
+        else if(strncmp(command, "AD-ACC-SEARCH", 13) == 0)
+        {
+           char account_no[14] = {0};
+           strcpy(account_no, &command[20]);
+
+
+           bool response = check_unique_account_no(account_no);
+           write(sockfd, &response, sizeof(bool));   
+
+        }
+        else if(strncmp(command, "AD-RESET-LOGIN", 14) == 0)
+        {
+
+            char username[65];
+            char password[65];
+            char account_no[14] = {0};
+            char salt[17] = {0};
+            strcpy(username, &command[20]);
+            strcpy(password, &command[85]);
+            strcpy(account_no, &command[182]);
+            strcpy(salt, &command[196]);
+           
+        
+
+            bool response = reset_login(account_no, username, password, salt);
+            write(sockfd, &response, sizeof(bool));   
+            
+            if(response == true)
+            {
+                printf("Reset success.\n");
+                char entry[255];
+                sprintf(entry, "ACC-RESET   | username: %s", username);
+                log_activity_admin(entry); 
+                
+            } 
+            else
+                printf("Reset failed.\n");
+
+        }
+        else if(strncmp(command, "DOWN", 4) == 0)
+        {
+            char filename[50];
+
+            if(strncmp(command, "DOWN-ACTIVITY", 13) == 0)
+                strcpy(filename, "logbook_activity.log");
+
+            if(strncmp(command, "DOWN-TRX", 8) == 0)
+                strcpy(filename, "logbook_transactions.log");
+
+            if(strncmp(command, "DOWN-ACTIVITY-AD", 16) == 0)
+                strcpy(filename, "logbook_activity_admin.log");
+
+
+
+            FILE *f;
+
+            f = fopen(filename, "r");
+            if(f == NULL)
+                error("File opening failed.\n");
+
+            int fd = fileno(f);
+
+            if (flock(fd, LOCK_SH) != 0) 
+            {
+                fclose(f);
+                error("flock() failed.\n");
+            }
+
+            char entry[256];
+            
+
+            while(fgets(entry, sizeof(entry), f) != NULL)
+            {  
+                write(sockfd, entry, sizeof(entry));   
+            }
+
+            strcpy(entry, "EOF");
+            write(sockfd, entry, sizeof(entry));
+
+            fclose(f);
+            flock(fd, LOCK_UN);
+    
+        }
+        else if(strncmp(command, "BDOWN", 5) == 0)
+        {
+            char filename[50];
+
+            if(strncmp(command, "BDOWN-USER-DB", 13) == 0)
+                strcpy(filename, "user_database.bin");
+
+            else if(strncmp(command, "BDOWN-AD-DB", 11) == 0)
+                strcpy(filename, "admin_database.bin");
+
+            
+
+            FILE *f;
+
+            f = fopen(filename, "rb");
+            if(f == NULL)
+                error("File opening failed.\n");
+
+            int fd = fileno(f);
+
+            if (flock(fd, LOCK_SH) != 0) 
+            {
+                fclose(f);
+                error("flock() failed.\n");
+            }
+
+            if(strcmp(filename, "user_database.bin") == 0)
+            {
+                user_info user;
+
+                while(fread(&user, sizeof(user_info), 1, f) == 1)
+                {
+                    write(sockfd, &user, sizeof(user_info));
+                
+                }
+                strcpy(user.username, "\0");
+                write(sockfd, &user, sizeof(user_info));
+            }
+            else if(strcmp(filename, "admin_database.bin") == 0)
+            {
+                admin_info admin;
+
+                while(fread(&admin, sizeof(admin_info), 1, f) == 1)
+                {
+                    write(sockfd, &admin, sizeof(admin_info));
+                
+                }
+                strcpy(admin.username, "\0");
+                write(sockfd, &admin, sizeof(admin_info));
+            }
+            
+
+            
+
+            fclose(f);
+            flock(fd, LOCK_UN);
+            
+
+        }
+
 
 
         
@@ -901,7 +1104,7 @@ bool transfer(char sender_username[], char account_no[], float transfer_amount)
 
                 fseek(f, -sizeof(user_info), SEEK_CUR);  
                 fwrite(&users, sizeof(user_info), 1, f);    
-                printf("deducted from sender\n");    
+                //printf("deducted from sender\n");    
                 break;
             }
             else
@@ -922,7 +1125,7 @@ bool transfer(char sender_username[], char account_no[], float transfer_amount)
 
     fseek(f, 0, SEEK_SET);  
         
-    printf("account  number: %s\n", account_no);
+    //printf("account  number: %s\n", account_no);
 
     user_found = false;
     while(fread(&users, sizeof(user_info), 1, f) == 1)
@@ -937,24 +1140,20 @@ bool transfer(char sender_username[], char account_no[], float transfer_amount)
 
             fseek(f, -sizeof(user_info), SEEK_CUR);  
             fwrite(&users, sizeof(user_info), 1, f);  
-            printf("added to receiver\n");        
+            //printf("added to receiver\n");        
             break;
             
         }
     }
 
-    printf("old sum:  %f\n", old_sum);
-    printf("new sum:  %f\n", new_sum);
+    //printf("old sum:  %f\n", old_sum);
+    //printf("new sum:  %f\n", new_sum);
 
     if(user_found == false || old_sum != new_sum)
     {
         flock(fd, LOCK_UN);
         fclose(f); 
-        if(user_found == false)
-            printf("user found = false\n");  
-        if(old_sum != new_sum)
-            printf("old sum != new sum\n");  
-
+        
         return false;
     }
         
@@ -1271,7 +1470,7 @@ char *decode_entry(char entry[], int type)
         //printf("username %s\n", username);
         searchByUsername(account_no, username);
         strcpy(t_type, "transfer-in");
-        printf("trasnfer in acc no %s\n", account_no);
+        //printf("trasnfer in acc no %s\n", account_no);
         strcpy(receiver, account_no);
         
     }
@@ -1404,7 +1603,7 @@ void update_log(char trxid[], const char status[])
 
             fseek(f, -strlen(buffer), SEEK_CUR);
             fputs(buffer, f);
-            printf("Edited successfully\n");
+            //printf("Edited successfully\n");
             fclose(f);
             break;
             
@@ -1445,6 +1644,250 @@ void log_activity(char entry[])
 
 
     FILE *f = fopen("logbook_activity.log", "a");
+
+    if(f == NULL)
+        error("Logbook opening failed");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_EX) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    fprintf(f, "[%02d-%02d-%04d %02d:%02d:%02d:%03d] %s\n", day, month, year, hour, minute, second, millisecond, entry);
+
+    flock(fd, LOCK_UN);
+    fclose(f);
+}
+
+bool admin_registration(char username[], char password[], char salt[])
+{
+    char choice[10] = {0};
+    printf("-----------Admin Registration Request-----------\n");
+    printf("Username: %s\n", username);
+    //printf("password: %s\n", password);
+    //printf("salt: %s\n", salt);
+    printf("Type \"CONFIRM\" to approve request: ");
+    scanf("%s", choice);
+    getchar();
+    printf("------------------------------------------------\n");
+
+    if(strcmp(choice, "CONFIRM") == 0)
+    {
+        FILE *f;
+        f = fopen("admin_database.bin", "ab");
+
+        if(f == NULL)
+        {
+            error("File opening failed.\n");
+        }
+
+        int fd = fileno(f);
+
+        if (flock(fd, LOCK_EX) != 0) 
+        {
+            fclose(f);
+            error("flock() failed.\n");
+        }
+
+        admin_info admin;
+        strcpy(admin.username, username);
+        strcpy(admin.password, password);
+        strcpy(admin.salt, salt);
+        fwrite(&admin, 1, sizeof(admin_info), f);
+
+        flock(fd, LOCK_UN);
+        fclose(f);
+
+        char entry[255];
+        sprintf(entry, "SIGNUP      | username: %s ", admin.username);
+        log_activity_admin(entry);
+        //printf("Username: %s\n", username);
+        //printf("password: %s\n", password);
+        //printf("salt: %s\n", salt);
+        return true;
+
+    }
+    else
+    {
+        char entry[255];
+        sprintf(entry, "SIGNUP-DEC  | username: %s ", username);
+        log_activity_admin(entry);
+        return false;
+    }
+    
+}
+bool check_unique_username_admin(char username[])
+{
+    FILE *f;
+
+    f = fopen("admin_database.bin", "rb");
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    admin_info admin;
+    int response = 1;
+
+    while(fread(&admin, sizeof(admin_info), 1, f) == 1)
+    {
+        if(strcmp(admin.username, username) == 0)
+        {
+            response = 0;
+        }
+            
+    }
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+    return response;
+}
+void send_salt_admin(int sockfd, char username[])
+{
+    FILE *f;
+
+    f = fopen("admin_database.bin", "rb");
+
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if(flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    
+
+    admin_info admin;
+    char salt[17];
+
+    while(fread(&admin, sizeof(admin_info), 1, f) == 1)
+    {
+        if(strcmp(admin.username, username) == 0)
+        {
+            strcpy(salt, admin.salt);
+            break;
+        }       
+    }
+
+    flock(fd, LOCK_UN);
+    fclose(f);
+
+    //printf("Salt: %s\n", salt);
+
+    write(sockfd, &salt, sizeof(salt));
+}
+bool check_password_admin(char username[], char password[])
+{
+    FILE *f;
+
+    f = fopen("admin_database.bin", "rb");
+
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }    
+
+    admin_info admin;
+    bool response = false;
+
+    //printf("Username: %s\n", username);
+    //printf("password: %s\n", password);
+
+    while(fread(&admin, sizeof(admin_info), 1, f) == 1)
+    {
+        if(strcmp(admin.username, username) == 0 && strcmp(admin.password, password) == 0)
+        {
+            response = true;
+        }       
+    }
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+    return response;
+}
+bool reset_login(char account_no[], char username[], char password[], char salt[])
+{
+    FILE *f;
+
+    f = fopen("user_database.bin", "r+b");
+
+    if(f == NULL)
+        error("File opening failed.\n");
+
+    int fd = fileno(f);
+
+    if (flock(fd, LOCK_SH) != 0) 
+    {
+        fclose(f);
+        error("flock() failed.\n");
+    }
+
+    user_info user;
+    bool response = false;
+
+    while(fread(&user, sizeof(user_info), 1, f) == 1)
+    {
+        if(strcmp(user.account_no, account_no) == 0)
+        {
+            response = true;
+            strcpy(user.username, username);
+            strcpy(user.password, password);
+            strcpy(user.salt, salt);
+            fseek(f, -sizeof(user_info), SEEK_CUR);
+            fwrite(&user, sizeof(user_info), 1, f);
+
+            //printf("username: %s\n", username);
+            //printf("new_password: %s\n", password);
+            //printf("salt: %s\n", salt);
+
+            break;
+        }       
+    }
+
+    
+
+    fclose(f);
+    flock(fd, LOCK_UN);
+    return response;
+}
+
+void log_activity_admin(char entry[])
+{
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int millisecond;
+
+    generate_time(&day, &month, &year, &hour, &minute, &second, &millisecond);
+
+
+
+
+    FILE *f = fopen("logbook_activity_admin.log", "a");
 
     if(f == NULL)
         error("Logbook opening failed");

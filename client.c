@@ -78,9 +78,16 @@ void download_trx(int sockfd, user_info user);
 
 
 void admin_registration(int sockfd);
+void admin_input_signup(int sockfd, char username[], char password[], char salt[]);
 void admin_login(int sockfd);
+void admin_input_login(int sockfd, char username[]);
+void admin_homepage(int sockfd, char username[]);
+void manage_users(int sockfd);
+void reset_login_info(int sockfd, char account_no[]);
+void view_logbook(int sockfd);
+void view_database(int sockfd);
 
-//void flush_socket(int sockfd);
+
 void error(const char *message);
 void clear_screen(); 
 
@@ -553,7 +560,9 @@ void package_command(char command[], const char seg1[], const char seg2[], const
 
 void sha256(char input[], int mode, char salt[]) 
 {
-    // mode 0 for usernames and 1 for passwords
+    // mode 0 for usernames
+    // mode 1 for server salts
+    // mode 2 for given salts 
 
     unsigned char hash[SHA256_DIGEST_LENGTH];
     
@@ -619,9 +628,11 @@ void main_menu(int sockfd)
                         break;
 
             case  3:    clear_screen(); 
+                        admin_registration(sockfd);
                         break;
 
             case  4:    clear_screen(); 
+                        admin_login(sockfd);
                         break;
 
             default:    clear_screen(); 
@@ -767,14 +778,7 @@ void user_input_login(int sockfd, char username[])
     //printf("%s\n", &command[20]);
     write(sockfd, &command, 256);
     read(sockfd, &response, sizeof(bool));
-    if(response == true)
-    {
-        //printf("response = true\n");
-    }
-    if(response == false)
-    {
-        //printf("response = false\n");
-    }
+    
     
     if(response == true)
     {
@@ -1342,7 +1346,7 @@ bool check_password(int sockfd, char username[])
     }
     else
         return response;
-        
+
 
 }
 void view_transactions(int sockfd, user_info user)
@@ -1397,7 +1401,7 @@ void view_transactions(int sockfd, user_info user)
 void download_trx(int sockfd, user_info user)
 {
     char output_file[64];
-    sprintf(output_file, "%s_transaction_history.txt", user.account_no);
+    sprintf(output_file, "%s/transaction_history.txt", user.account_no);
     FILE* f = fopen(output_file, "w");
     
     char command[256];
@@ -1427,15 +1431,407 @@ void download_trx(int sockfd, user_info user)
 }
 
 
-
-
 void admin_registration(int sockfd)
 {
+    char command[256];
+    char username[65] = {0}, password[65] = {0}, salt[17] = {0};
+    bool response;
+
+    
+    admin_input_signup(sockfd, username, password, salt);
+
+    if(strcmp(username, "0") == 0)
+        return;
+
+    package_command(command, "AD-SIGNUP", username, password, "", "", "", salt);
+
+    write(sockfd, command, sizeof(command));
+
+    read(sockfd, &response, sizeof(response));
+    if(response == true)
+    {
+        clear_screen();
+        printf("Account creation successful\n\n");
+        //printf("salt: %s\n", salt);
+    }
+    else
+    {
+        printf("Account creation failed.\n");
+    }
+
+
+}
+void admin_input_signup(int sockfd, char username[], char password[], char salt[])
+{
+    
+    LABEL02:
+    bzero(username, 65);
+    char command[256] = {0};
+    bool response = false;
+
+    while(response == false)
+    {
+        get_username(username, "Set username (0 to go back): ");
+        if(strcmp(username, "0") == 0)
+        {
+            return;
+        }
+        sha256(username, 0, username);
+        package_command(command, "AD-USERNAME-CHECK", username, "", "", "", "", "");
+        //printf("%s\n", command);
+        //printf("%s\n", &command[20]);
+        write(sockfd, &command, sizeof(command));
+        read(sockfd, &response, sizeof(bool));
+        if(response == false)
+        {
+            printf("Username taken already, try a different username.\n");
+        }
+    }
+
+    //printf("Username validated.\n");
+
+    
+
+    LABEL03:
+    get_password(password, "Set password (0 to go back): ");
+    if(strcmp(password, "0") == 0)
+    {
+        clear_screen();
+        goto LABEL02;
+    }
+    sha256(password, 1, salt);
+    
+    //printf("password: %s\n", password);
+    //printf("salt: %s\n", salt);
 
 }
 void admin_login(int sockfd)
 {
+    char username[65] = {0};
+    
+    admin_input_login(sockfd, username);
 
+    if(strcmp(username, "0") == 0)
+        return;
+
+    //("Login initiated.\n");
+    clear_screen();
+    admin_homepage(sockfd, username);
+}
+void admin_input_login(int sockfd, char username[])
+{
+    LABEL01:
+    
+    char command[256];
+    bool response;
+    get_username(username, "Enter username (0 to go back): ");
+    if(strcmp(username, "0") == 0)
+    {
+        clear_screen();
+        return;
+    }
+    
+    sha256(username, 0, username);
+
+    package_command(command, "AD-USERNAME-CHECK", username, "", "", "", "", "");
+    write(sockfd, &command, 256);
+    read(sockfd, &response, sizeof(bool));
+    
+    
+    if(response == true)
+    {
+        printf("Username does not exist.\n");
+        goto LABEL01;
+    }
+
+    LABEL02:
+    char password[65] = {0};
+    
+    get_password(password, "Enter password (0 to go back): ");
+    if(strcmp(password, "0") == 0)
+    {
+        clear_screen();
+        goto LABEL01;
+    }
+
+    package_command(command, "AD-PASS-CHECK", username, "", "", "", "", "");
+    write(sockfd, &command, sizeof(command));
+    char salt[17];
+    read(sockfd, &salt, sizeof(salt));
+    sha256(password, 2, salt);
+    printf("%s\n", password);
+    write(sockfd, &password, sizeof(password));
+    read(sockfd, &response, sizeof(bool));
+    if(response == false)
+    {
+        clear_screen();
+        printf("Password incorrect. Try again\n");
+        goto LABEL02;
+    }
+    
+
+    
+    
+}
+void admin_homepage(int sockfd, char username[])
+{
+    printf("Admin Homepage\n\n");
+    int choice;
+
+    while(1)
+    {
+        printf("1. Manage user profiles\n"
+               "2. Download logbooks\n"
+               "3. Download databases\n"
+               "4. Logout\n"
+               "Please select an operation (1-4): ");
+        scanf("%d", &choice);
+        getchar();
+
+        switch (choice)
+        {
+            case  1:    manage_users(sockfd);
+                        break;
+
+            case  2:    view_logbook(sockfd);   
+                        break;       
+
+            case  3:    view_database(sockfd);               
+                        break;
+            
+            case  4:    return;
+
+            default:    printf("Invalid choice.\n");
+        }
+    }
+}
+void manage_users(int sockfd)
+{
+    clear_screen();
+    LABEL01:
+    bool response = true;
+    char account_no[14];
+    char command[256];
+    
+    while(response == true)
+    {
+        
+        get_account_no(account_no, "Enter the account number to search for (0 to go back): ");
+        if(strcmp(account_no, "0") == 0)
+            return;
+        
+        package_command(command, "AD-ACC-SEARCH", account_no, "", "", "", "", "");
+        write(sockfd, command, sizeof(command));
+        read(sockfd, &response, sizeof(bool));
+
+        if(response == true)
+        {
+            clear_screen;
+            printf("Account does not exist\n");
+        }
+    }
+    
+    char choice;
+    printf("Reset login info (y/n) [0 to go back]?: ");
+    scanf("%c", &choice);
+    getchar();
+
+    if(choice == 'y')
+        reset_login_info(sockfd, account_no);
+    else if(choice == '0')
+        goto LABEL01;
+    else 
+        return;
+            
+}
+void reset_login_info(int sockfd, char account_no[])
+{
+    char command[256];
+    char new_username[65];
+    char new_password[65];
+    char salt[17] = {0};
+    bool response;
+    LABEL01:
+    get_username(new_username, "Enter new username (0 to go back): ");
+    if(strcmp(new_username, "0") == 0)
+        return;
+
+    sha256(new_username, 0, new_username);
+
+    package_command(command, "USERNAME-CHECK", new_username, "", "", "", "", "");
+    write(sockfd, &command, 256);
+    read(sockfd, &response, sizeof(bool));
+    if(response == false)
+    {
+        printf("Username already taken\n");
+        goto LABEL01;
+    }
+    
+
+    
+    get_password(new_password, "Enter new password(0 to go back): ");
+    if(strcmp(new_password, "0") == 0)
+        goto LABEL01;
+
+    sha256(new_password, 1, salt);
+
+    printf("username: %s\n", new_username);
+    printf("new_password: %s\n", new_password);
+    printf("salt: %s\n", salt);
+
+    package_command(command, "AD-RESET-LOGIN", new_username, new_password, "", "", account_no, salt);
+    write(sockfd, command, sizeof(command));
+    read(sockfd, &response, sizeof(bool));
+    if(response == true)
+    {
+        printf("Account reset successful\n");
+    }
+    else
+        printf("Account reset failed\n");
+
+}
+void view_logbook(int sockfd)
+{
+    int choice;
+    
+    while(1)
+    {
+        printf("Download: ");
+        printf("1. User Activity Logbook\n"
+               "2. User Transaction Logbook\n"
+               "3. Admin Activity Logbook\n"
+               "4. Return to previous menu\n"
+               "Please select an operation (1-4): ");
+        scanf("%d", &choice);
+        getchar();
+
+        char output_file[64];
+        char command[256];
+        FILE* f;
+
+        switch (choice)
+        {
+            case  1:    sprintf(output_file, "admin/logbook_activity.log");
+                        package_command(command, "DOWN-ACTIVITY", "", "", "", "", "", "");
+                        break;
+
+            case  2:    sprintf(output_file, "admin/logbook_transactions.log");
+                        package_command(command, "DOWN-TRX", "", "", "", "", "", "");
+                        break;       
+
+            case  3:    sprintf(output_file, "admin/logbook_activity_admin.log");
+                        package_command(command, "DOWN-ACTIVITY-AD", "", "", "", "", "", "");         
+                        break;
+            
+            case  4:    return;
+
+            default:    printf("Invalid choice.\n");
+        }
+
+        
+        f = fopen(output_file, "w");
+        write(sockfd, command, sizeof(command));
+        
+        char buffer[256] = {0};
+
+        while(1)
+        {
+            read(sockfd, buffer, sizeof(buffer));
+
+            if(strcmp(buffer, "EOF") != 0)
+            {
+                fprintf(f, "%s\n", buffer);
+            }
+            else 
+                break;
+
+        }
+        
+
+        fclose(f);
+
+    }
+}
+
+void view_database(int sockfd)
+{
+    int choice;
+    
+    while(1)
+    {
+        printf("Download: ");
+        printf("1. User Database\n"
+               "2. User Database\n"
+               "3. Return to previous menu\n"
+               "Please select an operation (1-4): ");
+        scanf("%d", &choice);
+        getchar();
+
+        char output_file[64];
+        char command[256];
+        FILE* f;
+
+        switch (choice)
+        {
+            case  1:    sprintf(output_file, "admin/user_database.bin");
+                        package_command(command, "BDOWN-USER-DB", "", "", "", "", "", "");
+                        break;
+
+            case  2:    sprintf(output_file, "admin/admin_datababase.bin");
+                        package_command(command, "BDOWN-AD-DB", "", "", "", "", "", "");
+                        break;       
+
+            case  3:    return;
+
+            default:    printf("Invalid choice.\n");
+        }
+
+        
+        f = fopen(output_file, "wb");
+        write(sockfd, command, sizeof(command));
+
+        if(choice == 1)
+        {
+            user_info user;
+
+            while(1)
+            {
+                read(sockfd, &user, sizeof(user_info));
+
+                if(strcmp(user.username, "\0") != 0)
+                {
+                    fwrite(&user, sizeof(user), 1, f);
+                }
+                else 
+                    break;
+
+            }
+        }
+        else if(choice == 2)
+        {
+            admin_info admin;
+
+            while(1)
+            {
+                read(sockfd, &admin, sizeof(admin_info));
+
+                if(strcmp(admin.username, "\0") != 0)
+                {
+                    fwrite(&admin, sizeof(admin), 1, f);
+                }
+                else 
+                    break;
+
+            }
+        }
+        
+        
+        
+        
+
+        fclose(f);
+
+    }
 }
 
 void error(const char *message)
